@@ -1,0 +1,29 @@
+# Operating System
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE & Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies & Build Artifacts (Future)
+/vendor/
+/node_modules/
+/public/build/
+/public/storage/
+/storage/*.key
+
+# Temporary files & Logs
+*.log
+/storage/logs/
+/storage/framework/cache/
+/storage/framework/sessions/
+/storage/framework/views/
