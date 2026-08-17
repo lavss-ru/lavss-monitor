@@ -38,8 +38,8 @@
 * **Backend:** Laravel 13
 * **Frontend:** React + TypeScript + Inertia.js
 * **UI:** Tailwind CSS + shadcn/ui (собственная дизайн-система `lavss monitor` на основе dark UI референса)
-* **Database:** PostgreSQL
-* **Queue / Cache:** Redis
+* **Database:** PostgreSQL 16
+* **Cache / Queue:** Redis 7
 * **Metrics:** Prometheus + Node Exporter (для Linux VPS)
 * **Proxmox Integration:** Proxmox API
 * **Website Checks:** Встроенные HTTP/HTTPS проверки
@@ -48,31 +48,58 @@
 
 ---
 
-## 4. Визуальный направление
+## 4. Local Development (Быстрый старт)
 
-Главный экран строится на основе утверждённого визуального макета [dashboard-reference-v0.1.png](file:///d:/seafile/lavss/My%20Libraries/Soft/Projects/lavss-monitor/design/dashboard-reference-v0.1.png):
-* Dark UI с глубоким тёмным фоном.
-* Понятная цветовая индикация статусов (🟢 Всё работает / 🟡 Требуют внимания / 🔴 Авария).
-* Выразительные сводные карточки и информационная иерархия.
-* Полная адаптивность для мобильных устройств, планшетов и десктопов.
+Для локального запуска проекта используются Docker Compose (PostgreSQL 16, Redis 7, PHP 8.3 App, Node.js Vite).
+
+### Запуск через Docker Compose:
+
+1. **Скопируйте конфигурацию окружения:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Запустите контейнеры:**
+   ```bash
+   docker compose up -d
+   ```
+
+3. **Откройте приложение в браузере:**
+   ```text
+   http://localhost:8000
+   ```
+
+4. **Данные для входа (Single Owner):**
+   * **Email:** `lavss@lavss.ru`
+   * **Password:** `password`
+
+5. **Остановка окружения:**
+   ```bash
+   docker compose down
+   ```
 
 ---
 
-## 5. Структура репозитория
+## 5. Структура проекта
 
 ```text
 lavss-monitor/
-├── backend/          # Laravel 13 приложение (заглушка для следующего этапа)
-├── frontend/         # React + Inertia фронтенд (заглушка для следующего этапа)
-├── infrastructure/   # Конфигурация окружения
-├── docs/             # Архитектурная документация и спецификации Alpha 0.1
-│   ├── VISION.md
-│   ├── ARCHITECTURE.md
-│   ├── MVP.md
-│   └── DECISIONS.md
-├── design/           # Дизайн-референсы и макеты
-├── README.md
-├── ROADMAP.md
-├── SECURITY.md
-└── CHANGELOG.md
+├── docker-compose.yml          # Dev-окружение (PostgreSQL 16, Redis 7, App, Vite)
+├── infrastructure/             # Dockerfiles для развёртывания
+│   └── docker/app.Dockerfile
+├── app/                        # Laravel 13 Backend (Controllers, Models)
+├── database/                   # Миграции и сид единственного владельца
+├── resources/                  # React + Inertia + Tailwind CSS Frontend
+│   ├── js/
+│   │   ├── Components/Dashboard/
+│   │   ├── Layouts/
+│   │   ├── Pages/Auth/Login.tsx
+│   │   ├── Pages/Dashboard.tsx
+│   │   └── types/dashboard.ts
+│   └── css/app.css
+├── routes/                     # web.php, auth.php
+├── tests/                      # Feature & Auth тесты (Pest)
+├── docs/                       # Спецификации и ADR
+└── design/
+    └── dashboard-reference-v0.1.png
 ```

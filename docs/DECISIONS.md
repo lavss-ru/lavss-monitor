@@ -1,6 +1,6 @@
 # DECISIONS — lavss monitor (ADR)
 
-Файл содержит реестр архитектурных решений (Architecture Decision Records), **утверждённых в рамках Project Kickoff Alpha 0.1**.
+Файл содержит реестр архитектурных решений (Architecture Decision Records), **утверждённых в рамках Project Kickoff и Stage 2**.
 
 ---
 
@@ -47,6 +47,10 @@
 ## ADR-009: Размещение Alpha 0.1 на PVE Home
 * **Контекст:** Хостинг для первой версии.
 * **Решение:** Разместить Alpha 0.1 на домашнем Proxmox (PVE Home) в окружении Ubuntu 24.04 (VM/LXC) с использованием Docker Compose.
+
+## ADR-010: Структура Laravel 13 + Inertia React (Единое монолитное приложение)
+* **Контекст:** Связывание Laravel бэкенда и React фронтенда.
+* **Решение:** Разместить монолитное приложение Laravel 13 + Inertia.js в корне репозитория, отказавшись от искусственных директорий `backend/` и `frontend/`.
 
 ---
 
