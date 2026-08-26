@@ -86,7 +86,8 @@
 lavss-monitor/
 ├── docker-compose.yml          # Dev-окружение (PostgreSQL 16, Redis 7, App, Vite)
 ├── infrastructure/             # Dockerfiles для развёртывания
-│   └── docker/app.Dockerfile
+│   ├── docker/app.Dockerfile
+│   └── docker/node.Dockerfile
 ├── app/                        # Laravel 13 Backend (Controllers, Models)
 ├── database/                   # Миграции и сид единственного владельца
 ├── resources/                  # React + Inertia + Tailwind CSS Frontend
