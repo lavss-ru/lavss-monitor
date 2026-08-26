@@ -6,6 +6,7 @@ test('guest is redirected to login screen when accessing dashboard', function ()
     $response = $this->get('/');
 
     $response->assertRedirect('/login');
+    $this->assertGuest('web');
 });
 
 test('login screen can be rendered', function () {
@@ -24,10 +25,10 @@ test('user can authenticate using login screen and access dashboard', function (
         'password' => 'password',
     ]);
 
-    $this->assertAuthenticated();
+    $this->assertAuthenticatedAs($user, 'web');
     $response->assertRedirect('/');
 
-    $dashboardResponse = $this->actingAs($user)->get('/');
+    $dashboardResponse = $this->actingAs($user, 'web')->get('/');
     $dashboardResponse->assertStatus(200);
 });
 
@@ -39,14 +40,14 @@ test('user can not authenticate with invalid password', function () {
         'password' => 'wrong-password',
     ]);
 
-    $this->assertGuest();
+    $this->assertGuest('web');
 });
 
 test('user can logout', function () {
     $user = User::factory()->create();
 
-    $response = $this->actingAs($user)->post('/logout');
+    $response = $this->actingAs($user, 'web')->post('/logout');
 
-    $this->assertGuest();
+    $this->assertGuest('web');
     $response->assertRedirect('/');
 });
