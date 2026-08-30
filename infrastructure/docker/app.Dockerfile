@@ -2,6 +2,7 @@ FROM php:8.3-cli-alpine
 
 RUN apk add --no-cache \
     postgresql-dev \
+    sqlite-dev \
     libzip-dev \
     zip \
     unzip \
@@ -9,7 +10,7 @@ RUN apk add --no-cache \
     curl \
     oniguruma-dev
 
-RUN docker-php-ext-install pdo pdo_pgsql mbstring zip fileinfo
+RUN docker-php-ext-install pdo pdo_pgsql pdo_sqlite mbstring zip fileinfo
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 

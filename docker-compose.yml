@@ -27,6 +27,21 @@ services:
       - postgres
       - redis
 
+  test:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/app.Dockerfile
+    environment:
+      APP_ENV: testing
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ":memory:"
+      SESSION_DRIVER: array
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+
   node:
     build:
       context: .
