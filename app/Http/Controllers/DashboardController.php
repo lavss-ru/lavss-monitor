@@ -28,20 +28,17 @@ class DashboardController extends Controller
 
         $activeWarningTitles = $activeEvents->pluck('title')->all();
 
-        // VPS list
-        $vpsList = $vpsCollection->map(function ($vps) use ($activeWarningTitles) {
-            $hasWarning = in_array($vps->name, $activeWarningTitles);
-
+        // VPS list — real fields from DB, no mock data
+        $vpsList = $vpsCollection->map(function ($vps) {
             return [
-                'id' => (string) $vps->id,
-                'name' => $vps->name,
-                'ip' => $vps->ip_address,
-                'cpu' => $hasWarning ? 45 : ($vps->name === 'VPS-02' ? 28 : 12),
-                'ram' => $hasWarning ? 78 : ($vps->name === 'VPS-02' ? 64 : 42),
-                'disk' => $hasWarning ? 87 : ($vps->name === 'VPS-02' ? 55 : 48),
-                'load' => $hasWarning ? '1.12' : ($vps->name === 'VPS-02' ? '0.42' : '0.15'),
-                'uptime' => $hasWarning ? '15 дн.' : ($vps->name === 'VPS-02' ? '108 дн.' : '42 дн.'),
-                'status' => $hasWarning ? 'warning' : 'ok',
+                'id'              => (string) $vps->id,
+                'name'            => $vps->name,
+                'ip'              => $vps->ip_address,
+                'hostname'        => $vps->hostname,
+                'status'          => $vps->status ?? 'unknown',
+                'check_port'      => $vps->check_port ?? 22,
+                'last_checked_at' => $vps->last_checked_at?->toISOString(),
+                'response_ms'     => $vps->last_response_ms,
             ];
         });
 
@@ -50,14 +47,14 @@ class DashboardController extends Controller
             $hasWarning = in_array($site->name, $activeWarningTitles);
 
             return [
-                'id' => (string) $site->id,
-                'name' => $site->name,
-                'url' => $site->url,
-                'status' => '200 OK',
+                'id'           => (string) $site->id,
+                'name'         => $site->name,
+                'url'          => $site->url,
+                'status'       => '200 OK',
                 'responseTime' => $hasWarning ? '340 ms' : '120 ms',
-                'sslDays' => $hasWarning ? 3 : 180,
-                'type' => ucfirst($site->type),
-                'state' => $hasWarning ? 'warning' : 'ok',
+                'sslDays'      => $hasWarning ? 3 : 180,
+                'type'         => ucfirst($site->type),
+                'state'        => $hasWarning ? 'warning' : 'ok',
             ];
         });
 
@@ -66,22 +63,22 @@ class DashboardController extends Controller
             $hasWarning = in_array($item->name, $activeWarningTitles);
             $typeLabel = match (strtolower($item->type)) {
                 'proxmox' => 'Proxmox VE Node',
-                'server' => 'Linux Server',
-                'lxc' => 'LXC Container',
-                'vm' => 'Virtual Machine',
-                default => ucfirst($item->type),
+                'server'  => 'Linux Server',
+                'lxc'     => 'LXC Container',
+                'vm'      => 'Virtual Machine',
+                default   => ucfirst($item->type),
             };
 
             return [
-                'id' => (string) $item->id,
-                'name' => $item->name,
-                'type' => $typeLabel,
+                'id'      => (string) $item->id,
+                'name'    => $item->name,
+                'type'    => $typeLabel,
                 'details' => $item->description ?? 'Normal operation',
-                'status' => $hasWarning ? 'warning' : 'ok',
+                'status'  => $hasWarning ? 'warning' : 'ok',
             ];
         });
 
-        // Attention items
+        // Attention items from events
         $attentionItems = $activeEvents->map(function ($event) {
             $category = match (strtolower($event->type)) {
                 'vps', 'server' => 'VPS',
@@ -90,22 +87,34 @@ class DashboardController extends Controller
             };
 
             return [
-                'id' => 'att-' . $event->id,
-                'title' => $event->title,
+                'id'          => 'att-' . $event->id,
+                'title'       => $event->title,
                 'description' => $event->message,
-                'level' => $event->severity,
-                'category' => $category,
+                'level'       => $event->severity,
+                'category'    => $category,
             ];
         });
+
+        // Append offline VPS to attention items (unknown is NOT considered offline)
+        $offlineVps = $vpsCollection->where('status', 'offline');
+        foreach ($offlineVps as $vps) {
+            $attentionItems->push([
+                'id'          => 'vps-offline-' . $vps->id,
+                'title'       => $vps->name . ' — недоступен',
+                'description' => 'TCP connect к ' . $vps->ip_address . ':' . ($vps->check_port ?? 22) . ' не удался.',
+                'level'       => 'warning',
+                'category'    => 'VPS',
+            ]);
+        }
 
         // Recent events
         $recentEvents = $recentEventsCollection->map(function ($event) {
             return [
-                'id' => 'evt-' . $event->id,
-                'title' => $event->title,
+                'id'      => 'evt-' . $event->id,
+                'title'   => $event->title,
                 'message' => $event->message,
-                'time' => $event->occurred_at ? $event->occurred_at->diffForHumans() : 'Только что',
-                'type' => match ($event->severity) {
+                'time'    => $event->occurred_at ? $event->occurred_at->diffForHumans() : 'Только что',
+                'type'    => match ($event->severity) {
                     'critical', 'error' => 'error',
                     'warning' => 'warning',
                     'success' => 'success',
@@ -115,20 +124,33 @@ class DashboardController extends Controller
         });
 
         // Summary counters
-        $vpsCount = $vpsCollection->count();
-        $websitesCount = $websiteCollection->count();
-        $wordpressCount = $websiteCollection->where('type', 'wordpress')->count();
+        $vpsCount            = $vpsCollection->count();
+        $vpsOnline           = $vpsCollection->where('status', 'online')->count();
+        $vpsOffline          = $vpsCollection->where('status', 'offline')->count();
+        $websitesCount       = $websiteCollection->count();
+        $wordpressCount      = $websiteCollection->where('type', 'wordpress')->count();
         $infrastructureCount = $infrastructureCollection->count();
 
-        $pveCount = $infrastructureCollection->where('type', 'proxmox')->count();
+        $pveCount    = $infrastructureCollection->where('type', 'proxmox')->count();
         $serverCount = $infrastructureCollection->where('type', 'server')->count();
-        $lxcCount = $infrastructureCollection->where('type', 'lxc')->count();
+        $lxcCount    = $infrastructureCollection->where('type', 'lxc')->count();
 
-        $activeWarningsCount = $activeEvents->count();
-        $webWarningCount = $activeEvents->where('type', 'Website')->count();
+        $activeWarningsCount = $activeEvents->count() + $offlineVps->count();
+        $webWarningCount     = $activeEvents->where('type', 'Website')->count();
+
+        // VPS sub-label based on real status
+        if ($vpsCount === 0) {
+            $vpsSub = 'Нет серверов';
+        } elseif ($vpsOffline > 0) {
+            $vpsSub = "{$vpsOnline} online, {$vpsOffline} offline";
+        } elseif ($vpsOnline === $vpsCount) {
+            $vpsSub = 'Все на связи';
+        } else {
+            $vpsSub = "{$vpsOnline} online";
+        }
 
         $overallStatus = $activeWarningsCount > 0 ? 'warning' : 'ok';
-        $statusTitle = $activeWarningsCount > 0
+        $statusTitle   = $activeWarningsCount > 0
             ? "🟡 Требуют внимания — {$activeWarningsCount}"
             : '🟢 Вся система работает нормально';
         $statusSubtitle = $activeWarningsCount > 0
@@ -136,35 +158,35 @@ class DashboardController extends Controller
             : 'Все объекты и сервисы находятся в рабочем состоянии.';
 
         $dashboardData = [
-            'overallStatus' => $overallStatus,
-            'statusTitle' => $statusTitle,
+            'overallStatus'  => $overallStatus,
+            'statusTitle'    => $statusTitle,
             'statusSubtitle' => $statusSubtitle,
-            'summaries' => [
+            'summaries'      => [
                 'vps' => [
                     'count' => $vpsCount,
                     'label' => 'VPS',
-                    'sub' => 'Все на связи',
+                    'sub'   => $vpsSub,
                 ],
                 'websites' => [
                     'count' => $websitesCount,
                     'label' => 'Сайты',
-                    'sub' => $webWarningCount > 0 ? "{$webWarningCount} с предупреждением" : 'Все доступны',
+                    'sub'   => $webWarningCount > 0 ? "{$webWarningCount} с предупреждением" : 'Все доступны',
                 ],
                 'wordpress' => [
                     'count' => $wordpressCount,
                     'label' => 'WordPress',
-                    'sub' => "{$wordpressCount} активных сайтов",
+                    'sub'   => "{$wordpressCount} активных сайтов",
                 ],
                 'infrastructure' => [
                     'count' => $infrastructureCount,
                     'label' => 'Инфраструктура',
-                    'sub' => "{$pveCount} PVE, {$serverCount} Сервера, {$lxcCount} LXC",
+                    'sub'   => "{$pveCount} PVE, {$serverCount} Сервера, {$lxcCount} LXC",
                 ],
             ],
-            'attentionItems' => $attentionItems->values()->all(),
-            'recentEvents' => $recentEvents->values()->all(),
-            'vpsList' => $vpsList->values()->all(),
-            'websitesList' => $websitesList->values()->all(),
+            'attentionItems'     => $attentionItems->values()->all(),
+            'recentEvents'       => $recentEvents->values()->all(),
+            'vpsList'            => $vpsList->values()->all(),
+            'websitesList'       => $websitesList->values()->all(),
             'infrastructureList' => $infrastructureList->values()->all(),
         ];
 

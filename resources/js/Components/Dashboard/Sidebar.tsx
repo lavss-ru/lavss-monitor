@@ -22,10 +22,17 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen, onAddObjectClick }) => {
     const { url } = usePage();
+    const { vpsCount } = usePage().props as { vpsCount?: number };
 
     const navItems = [
         { name: 'Dashboard', href: '/', icon: LayoutDashboard, active: url === '/' || url === '/dashboard' },
-        { name: 'VPS / Серверы', href: '#vps', icon: Server, count: 3 },
+        {
+            name: 'VPS / Серверы',
+            href: '/vps',
+            icon: Server,
+            count: vpsCount ?? 0,
+            active: url.startsWith('/vps'),
+        },
         { name: 'Сайты', href: '#websites', icon: Globe, count: 15 },
         { name: 'Proxmox', href: '#proxmox', icon: Cpu, count: 2 },
         { name: 'Контейнеры', href: '#containers', icon: Box, count: 2 },

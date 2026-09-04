@@ -24,12 +24,11 @@ export interface VPSItem {
     id: string;
     name: string;
     ip: string;
-    cpu: number;
-    ram: number;
-    disk: number;
-    load: string;
-    uptime: string;
-    status: 'ok' | 'warning' | 'critical';
+    hostname: string | null;
+    status: 'online' | 'offline' | 'unknown';
+    check_port: number;
+    last_checked_at: string | null;
+    response_ms: number | null;
 }
 
 export interface WebsiteItem {
