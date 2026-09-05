@@ -78,10 +78,19 @@ class DashboardController extends Controller
             ];
         });
 
-        // Attention items from events
-        $attentionItems = $activeEvents->map(function ($event) {
+        // Attention items:
+        // — VPS: built exclusively from Vps.status = 'offline' (authoritative current state).
+        //   VPS-type events are NOT used here to avoid duplicates when both an Event and
+        //   an offline VPS status exist simultaneously.
+        // — Website / Infrastructure: still sourced from unresolved warning/critical events.
+        $offlineVps = $vpsCollection->where('status', 'offline');
+
+        $nonVpsActiveEvents = $activeEvents->filter(
+            fn ($event) => ! in_array(strtolower($event->type), ['vps', 'server'], true)
+        );
+
+        $attentionItems = $nonVpsActiveEvents->map(function ($event) {
             $category = match (strtolower($event->type)) {
-                'vps', 'server' => 'VPS',
                 'website', 'wordpress' => 'Website',
                 default => 'Infrastructure',
             };
@@ -93,10 +102,8 @@ class DashboardController extends Controller
                 'level'       => $event->severity,
                 'category'    => $category,
             ];
-        });
+        })->values();
 
-        // Append offline VPS to attention items (unknown is NOT considered offline)
-        $offlineVps = $vpsCollection->where('status', 'offline');
         foreach ($offlineVps as $vps) {
             $attentionItems->push([
                 'id'          => 'vps-offline-' . $vps->id,
@@ -135,7 +142,7 @@ class DashboardController extends Controller
         $serverCount = $infrastructureCollection->where('type', 'server')->count();
         $lxcCount    = $infrastructureCollection->where('type', 'lxc')->count();
 
-        $activeWarningsCount = $activeEvents->count() + $offlineVps->count();
+        $activeWarningsCount = $offlineVps->count() + $nonVpsActiveEvents->count();
         $webWarningCount     = $activeEvents->where('type', 'Website')->count();
 
         // VPS sub-label based on real status

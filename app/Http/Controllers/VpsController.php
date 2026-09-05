@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Vps;
-use App\Services\VpsHealthCheckService;
+use App\Services\VpsMonitoringService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -11,7 +11,7 @@ use Inertia\Response;
 
 class VpsController extends Controller
 {
-    public function __construct(private VpsHealthCheckService $healthCheck)
+    public function __construct(private VpsMonitoringService $monitoring)
     {
     }
 
@@ -62,24 +62,26 @@ class VpsController extends Controller
     }
 
     /**
-     * Run a health-check for the given VPS.
+     * Run a health-check for the given VPS (manual trigger).
+     * Uses VpsMonitoringService so events are created on status transitions.
      */
     public function check(Vps $vps): RedirectResponse
     {
-        $this->healthCheck->check($vps);
+        $this->monitoring->monitor($vps);
 
         return redirect()->route('vps.index');
     }
 
     /**
-     * Run health-check for all enabled VPS servers.
+     * Run health-check for all enabled VPS servers (manual trigger).
+     * Uses VpsMonitoringService so events are created on status transitions.
      */
     public function checkAll(): RedirectResponse
     {
         $vpsList = Vps::where('enabled', true)->get();
 
         foreach ($vpsList as $vps) {
-            $this->healthCheck->check($vps);
+            $this->monitoring->monitor($vps);
         }
 
         return redirect()->route('vps.index');
