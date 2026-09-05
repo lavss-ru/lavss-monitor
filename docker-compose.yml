@@ -27,6 +27,33 @@ services:
       - postgres
       - redis
 
+  scheduler:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/app.Dockerfile
+    container_name: lavss_monitor_scheduler
+    restart: unless-stopped
+    command: ["php", "artisan", "schedule:work"]
+    environment:
+      APP_NAME: "lavss monitor"
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8000
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-lavss_monitor}
+      DB_USERNAME: ${DB_USERNAME:-lavss_dev}
+      DB_PASSWORD: ${DB_PASSWORD:-dev_secret_123}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+    depends_on:
+      - postgres
+      - redis
+
   test:
     build:
       context: .
