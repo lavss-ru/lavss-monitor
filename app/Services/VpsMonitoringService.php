@@ -7,8 +7,10 @@ use App\Models\Vps;
 
 class VpsMonitoringService
 {
-    public function __construct(private VpsHealthCheckService $healthCheck)
-    {
+    public function __construct(
+        private VpsHealthCheckService $healthCheck,
+        private MaxNotifier $notifier,
+    ) {
     }
 
     /**
@@ -85,6 +87,7 @@ class VpsMonitoringService
                 'source_id'   => $vps->id,
                 'occurred_at' => now(),
             ]);
+            $this->notifier->sendDown($vps);
             return true;
         }
 
@@ -100,6 +103,7 @@ class VpsMonitoringService
                 'source_id'   => $vps->id,
                 'occurred_at' => now(),
             ]);
+            $this->notifier->sendRecovery($vps);
             return true;
         }
 

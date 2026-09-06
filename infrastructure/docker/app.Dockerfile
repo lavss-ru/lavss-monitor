@@ -1,6 +1,7 @@
 FROM php:8.3-cli-alpine
 
 RUN apk add --no-cache \
+    ca-certificates \
     postgresql-dev \
     sqlite-dev \
     libzip-dev \
@@ -11,6 +12,11 @@ RUN apk add --no-cache \
     oniguruma-dev
 
 RUN docker-php-ext-install pdo pdo_pgsql pdo_sqlite mbstring zip fileinfo
+
+# Trust Russian national CA chain used by MAX Messenger API.
+COPY infrastructure/docker/certificates/russian_trusted_root_ca.crt /usr/local/share/ca-certificates/russian_trusted_root_ca.crt
+COPY infrastructure/docker/certificates/russian_trusted_sub_ca.crt /usr/local/share/ca-certificates/russian_trusted_sub_ca.crt
+RUN update-ca-certificates
 
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 

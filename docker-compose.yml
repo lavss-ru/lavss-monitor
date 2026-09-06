@@ -65,6 +65,8 @@ services:
       SESSION_DRIVER: array
       CACHE_STORE: array
       QUEUE_CONNECTION: sync
+      MAX_BOT_TOKEN: ""
+      MAX_USER_ID: ""
     volumes:
       - .:/var/www/html
       - /var/www/html/vendor
