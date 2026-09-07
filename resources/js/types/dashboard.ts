@@ -35,11 +35,11 @@ export interface WebsiteItem {
     id: string;
     name: string;
     url: string;
-    status: string;
-    responseTime: string;
-    sslDays: number;
-    type: string;
-    state: 'ok' | 'warning' | 'critical';
+    status: 'online' | 'offline' | 'unknown';
+    last_http_status: number | null;
+    last_response_ms: number | null;
+    last_checked_at: string | null;
+    type: 'website' | 'wordpress';
 }
 
 export interface InfrastructureItem {

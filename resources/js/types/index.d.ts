@@ -12,4 +12,5 @@ export type PageProps<
         user: User;
     };
     vpsCount?: number;
+    websiteCount?: number;
 };

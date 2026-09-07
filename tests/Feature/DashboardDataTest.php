@@ -234,3 +234,41 @@ test('vps event that is resolved does not appear in attention items', function (
         ->has('dashboard.recentEvents', 2)     // both events visible in history
     );
 });
+
+test('dashboard uses current website measurements and ignores old website warnings', function (string $status) {
+    $site = Website::create([
+        'name' => 'Measured website', 'url' => 'https://example.com', 'type' => 'wordpress', 'enabled' => true,
+        'status' => $status, 'last_http_status' => $status === 'unknown' ? null : ($status === 'online' ? 200 : 503),
+        'last_response_ms' => $status === 'unknown' ? null : 37,
+        'last_checked_at' => $status === 'unknown' ? null : now()->subMinute(),
+    ]);
+    foreach (['Website', 'wordpress'] as $type) {
+        Event::create(['type' => $type, 'severity' => 'warning', 'title' => $site->name, 'message' => 'Old warning', 'source_id' => $site->id, 'occurred_at' => now()->subHour()]);
+    }
+    $site->refresh();
+    $this->actingAs(User::factory()->create())->get('/')->assertInertia(fn ($page) => $page
+        ->where('dashboard.websitesList.0.status', $status)
+        ->where('dashboard.websitesList.0.last_http_status', $site->last_http_status)
+        ->where('dashboard.websitesList.0.last_response_ms', $site->last_response_ms)
+        ->where('dashboard.websitesList.0.last_checked_at', $site->last_checked_at?->toISOString())
+        ->missing('dashboard.websitesList.0.sslDays')
+        ->has('dashboard.attentionItems', $status === 'offline' ? 1 : 0)
+        ->has('dashboard.recentEvents', 2)
+        ->where('dashboard.overallStatus', $status === 'offline' ? 'warning' : 'ok')
+        ->where('dashboard.summaries.websites.count', 1)
+    );
+})->with(['offline', 'online', 'unknown']);
+
+
+test('offline website without events requires attention and disabled websites are excluded', function () {
+    Website::create(['name' => 'Offline', 'url' => 'https://example.com', 'status' => 'offline', 'enabled' => true]);
+    Website::create(['name' => 'Disabled', 'url' => 'https://disabled.example.com', 'status' => 'offline', 'enabled' => false]);
+    $this->actingAs(User::factory()->create())->get('/')->assertInertia(fn ($page) => $page
+        ->has('dashboard.attentionItems', 1)
+        ->where('dashboard.attentionItems.0.category', 'Website')
+        ->has('dashboard.websitesList', 1)
+        ->where('dashboard.summaries.websites.count', 1)
+        ->where('websiteCount', 2)
+        ->has('dashboard.recentEvents', 0)
+    );
+});

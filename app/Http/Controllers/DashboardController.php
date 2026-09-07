@@ -42,21 +42,17 @@ class DashboardController extends Controller
             ];
         });
 
-        // Websites list
-        $websitesList = $websiteCollection->map(function ($site) use ($activeWarningTitles) {
-            $hasWarning = in_array($site->name, $activeWarningTitles);
-
-            return [
-                'id'           => (string) $site->id,
-                'name'         => $site->name,
-                'url'          => $site->url,
-                'status'       => '200 OK',
-                'responseTime' => $hasWarning ? '340 ms' : '120 ms',
-                'sslDays'      => $hasWarning ? 3 : 180,
-                'type'         => ucfirst($site->type),
-                'state'        => $hasWarning ? 'warning' : 'ok',
-            ];
-        });
+        // Websites use the last measured HTTP result.
+        $websitesList = $websiteCollection->map(fn ($site) => [
+            'id' => (string) $site->id,
+            'name' => $site->name,
+            'url' => $site->url,
+            'status' => $site->status ?? 'unknown',
+            'last_http_status' => $site->last_http_status,
+            'last_response_ms' => $site->last_response_ms,
+            'last_checked_at' => $site->last_checked_at?->toISOString(),
+            'type' => $site->type,
+        ]);
 
         // Infrastructure list
         $infrastructureList = $infrastructureCollection->map(function ($item) use ($activeWarningTitles) {
@@ -82,25 +78,21 @@ class DashboardController extends Controller
         // — VPS: built exclusively from Vps.status = 'offline' (authoritative current state).
         //   VPS-type events are NOT used here to avoid duplicates when both an Event and
         //   an offline VPS status exist simultaneously.
-        // — Website / Infrastructure: still sourced from unresolved warning/critical events.
+        // — Websites: current offline state; Infrastructure: unresolved warning/critical events.
         $offlineVps = $vpsCollection->where('status', 'offline');
+        $offlineWebsites = $websiteCollection->where('status', 'offline');
 
-        $nonVpsActiveEvents = $activeEvents->filter(
-            fn ($event) => ! in_array(strtolower($event->type), ['vps', 'server'], true)
+        $infrastructureActiveEvents = $activeEvents->filter(
+            fn ($event) => ! in_array(strtolower($event->type), ['vps', 'server', 'website', 'wordpress'], true)
         );
 
-        $attentionItems = $nonVpsActiveEvents->map(function ($event) {
-            $category = match (strtolower($event->type)) {
-                'website', 'wordpress' => 'Website',
-                default => 'Infrastructure',
-            };
-
+        $attentionItems = $infrastructureActiveEvents->map(function ($event) {
             return [
                 'id'          => 'att-' . $event->id,
                 'title'       => $event->title,
                 'description' => $event->message,
                 'level'       => $event->severity,
-                'category'    => $category,
+                'category'    => 'Infrastructure',
             ];
         })->values();
 
@@ -111,6 +103,18 @@ class DashboardController extends Controller
                 'description' => 'TCP connect к ' . $vps->ip_address . ':' . ($vps->check_port ?? 22) . ' не удался.',
                 'level'       => 'warning',
                 'category'    => 'VPS',
+            ]);
+        }
+
+        foreach ($offlineWebsites as $site) {
+            $attentionItems->push([
+                'id' => 'website-offline-' . $site->id,
+                'title' => $site->name . ' — недоступен',
+                'description' => $site->last_http_status !== null
+                    ? 'HTTP ' . $site->last_http_status . ' — ' . $site->url
+                    : 'HTTP/HTTPS проверка не удалась — ' . $site->url,
+                'level' => 'warning',
+                'category' => 'Website',
             ]);
         }
 
@@ -142,8 +146,15 @@ class DashboardController extends Controller
         $serverCount = $infrastructureCollection->where('type', 'server')->count();
         $lxcCount    = $infrastructureCollection->where('type', 'lxc')->count();
 
-        $activeWarningsCount = $offlineVps->count() + $nonVpsActiveEvents->count();
-        $webWarningCount     = $activeEvents->where('type', 'Website')->count();
+        $activeWarningsCount = $offlineVps->count() + $offlineWebsites->count() + $infrastructureActiveEvents->count();
+        $webWarningCount     = $offlineWebsites->count();
+        $websitesOnline      = $websiteCollection->where('status', 'online')->count();
+        $websitesSub = match (true) {
+            $websitesCount === 0 => 'Нет сайтов',
+            $webWarningCount > 0 => "{$websitesOnline} online, {$webWarningCount} offline",
+            $websitesOnline === $websitesCount => 'Все доступны',
+            default => 'Есть непроверенные сайты',
+        };
 
         // VPS sub-label based on real status
         if ($vpsCount === 0) {
@@ -177,7 +188,7 @@ class DashboardController extends Controller
                 'websites' => [
                     'count' => $websitesCount,
                     'label' => 'Сайты',
-                    'sub'   => $webWarningCount > 0 ? "{$webWarningCount} с предупреждением" : 'Все доступны',
+                    'sub'   => $websitesSub,
                 ],
                 'wordpress' => [
                     'count' => $wordpressCount,
