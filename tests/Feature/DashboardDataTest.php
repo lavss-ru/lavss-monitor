@@ -272,3 +272,32 @@ test('offline website without events requires attention and disabled websites ar
         ->has('dashboard.recentEvents', 0)
     );
 });
+
+test('website down and recovery update attention while preserving event history', function () {
+    \Illuminate\Support\Facades\Http::preventStrayRequests();
+    \Illuminate\Support\Facades\Http::fake([
+        'https://example.test' => \Illuminate\Support\Facades\Http::sequence()->push('', 404)->push('', 200),
+    ]);
+    $this->travelTo(now()->startOfSecond());
+    $site = Website::create(['name' => 'Monitored', 'url' => 'https://example.test']);
+    $notifier = $this->mock(\App\Services\MaxNotifier::class);
+    $notifier->shouldReceive('sendWebsiteDown')->once();
+    $notifier->shouldReceive('sendWebsiteRecovery')->once();
+    $this->actingAs(User::factory()->create());
+    $service = app(\App\Services\WebsiteMonitoringService::class);
+    $service->monitor($site);
+    $this->get('/')->assertInertia(fn ($page) => $page
+        ->has('dashboard.attentionItems', 1)
+        ->where('dashboard.attentionItems.0.id', 'website-offline-'.$site->id)
+        ->has('dashboard.recentEvents', 1)
+    );
+    $this->travel(1)->minutes();
+    $service->monitor($site);
+    $this->get('/')->assertInertia(fn ($page) => $page
+        ->has('dashboard.attentionItems', 0)
+        ->has('dashboard.recentEvents', 2)
+        ->where('dashboard.recentEvents.0.type', 'info')
+        ->where('dashboard.recentEvents.1.type', 'warning')
+    );
+    expect(Event::count())->toBe(2)->and(Event::whereNotNull('resolved_at')->count())->toBe(0);
+});

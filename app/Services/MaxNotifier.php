@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Vps;
+use App\Models\Website;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -67,11 +68,45 @@ class MaxNotifier
         $this->send($text, $vps->name, 'recovery');
     }
 
+    public function sendWebsiteDown(Website $website): void
+    {
+        $this->sendWebsite($website, false);
+    }
+
+    public function sendWebsiteRecovery(Website $website): void
+    {
+        $this->sendWebsite($website, true);
+    }
+
+    private function sendWebsite(Website $website, bool $recovery): void
+    {
+        if (! $this->isConfigured()) {
+            return;
+        }
+
+        $http = $website->last_http_status !== null
+            ? 'HTTP '.$website->last_http_status
+            : 'HTTP-ответ не получен';
+        $timestamp = ($website->last_checked_at ?? now())->format('d.m.Y H:i:s T');
+        $timeLabel = $recovery ? 'Время восстановления' : 'Время';
+        $text = implode("\n", [
+            $recovery ? '🟢 Сайт снова доступен' : '🔴 Сайт недоступен',
+            '',
+            "Сайт: {$website->name}",
+            "URL: {$website->url}",
+            "Результат: {$http}",
+            "Длительность проверки: {$website->last_response_ms} ms",
+            "{$timeLabel}: {$timestamp}",
+        ]);
+
+        $this->send($text, $website->name, $recovery ? 'recovery' : 'down', 'website');
+    }
+
     /**
      * Perform the actual HTTP POST to MAX API.
      * All exceptions are caught so they never propagate to the caller.
      */
-    private function send(string $text, string $vpsName, string $kind): void
+    private function send(string $text, string $sourceName, string $kind, string $sourceType = 'vps'): void
     {
         $botToken = (string) config('services.max.bot_token');
         $userId   = (string) config('services.max.user_id');
@@ -88,7 +123,7 @@ class MaxNotifier
 
             if (! $response->successful()) {
                 Log::error('MaxNotifier: MAX API returned non-2xx response', [
-                    'vps'    => $vpsName,
+                    $sourceType => $sourceName,
                     'kind'   => $kind,
                     'status' => $response->status(),
                     'body'   => $response->body(),
@@ -96,7 +131,7 @@ class MaxNotifier
             }
         } catch (\Throwable $e) {
             Log::error('MaxNotifier: failed to send MAX notification', [
-                'vps'   => $vpsName,
+                $sourceType => $sourceName,
                 'kind'  => $kind,
                 'error' => $e->getMessage(),
             ]);

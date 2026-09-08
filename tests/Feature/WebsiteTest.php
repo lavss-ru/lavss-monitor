@@ -1,7 +1,9 @@
 <?php
 
+use App\Models\Event;
 use App\Models\User;
 use App\Models\Website;
+use App\Services\MaxNotifier;
 use App\Services\WebsiteHealthCheckService;
 use Illuminate\Support\Facades\Http;
 
@@ -90,3 +92,58 @@ test('a failed website does not stop later checks', function () {
     $this->actingAs(User::factory()->create())->post('/websites/check-all')->assertRedirect('/websites');
     expect($second->refresh()->status)->toBe('online');
 });
+
+test('enabled manual checks share transitions with the automatic command', function (bool $all) {
+    Http::fake(['https://example.com' => Http::sequence()->push('', 404)->push('', 500)->push('', 200)]);
+    $site = Website::create(websitePayload(['status' => 'online']));
+    $notifier = $this->mock(MaxNotifier::class);
+    $notifier->shouldReceive('sendWebsiteDown')->once();
+    $notifier->shouldReceive('sendWebsiteRecovery')->once();
+    $path = $all ? '/websites/check-all' : '/websites/'.$site->id.'/check';
+    $this->actingAs(User::factory()->create())->post($path)->assertRedirect('/websites');
+    expect(Event::count())->toBe(1)->and(Event::sole()->severity)->toBe('warning');
+    $this->artisan('monitor:websites')->assertSuccessful();
+    expect(Event::count())->toBe(1)->and($site->fresh()->last_http_status)->toBe(500);
+    $this->post($path)->assertRedirect('/websites');
+    expect(Event::orderBy('id')->pluck('severity')->all())->toBe(['warning', 'info']);
+})->with([false, true]);
+
+test('disabled single diagnostics update measurements without events or MAX', function (string $previous, int $code) {
+    Http::fake(['https://example.com' => Http::response('', $code)]);
+    $site = Website::create(websitePayload(['enabled' => false, 'status' => $previous]));
+    $notifier = $this->mock(MaxNotifier::class);
+    $notifier->shouldNotReceive('sendWebsiteDown');
+    $notifier->shouldNotReceive('sendWebsiteRecovery');
+    $this->actingAs(User::factory()->create())->post('/websites/'.$site->id.'/check')->assertRedirect('/websites');
+    expect($site->fresh()->status)->toBe($code < 400 ? 'online' : 'offline')
+        ->and($site->fresh()->last_http_status)->toBe($code)
+        ->and($site->fresh()->last_checked_at)->not->toBeNull()
+        ->and($site->fresh()->last_response_ms)->toBeInt()
+        ->and(Event::count())->toBe(0);
+    $this->post('/websites/check-all')->assertRedirect('/websites');
+    $this->artisan('monitor:websites')->assertSuccessful();
+    Http::assertSentCount(1);
+})->with([['online', 404], ['offline', 200]]);
+
+test('disable and re-enable preserve measurements and the next transition baseline', function (int $nextCode) {
+    $this->travelTo(now()->startOfSecond());
+    Http::fake(['https://example.com' => Http::response('', $nextCode)]);
+    $site = Website::create(websitePayload([
+        'status' => 'offline', 'last_http_status' => 500, 'last_response_ms' => 42,
+        'last_checked_at' => now()->subHour(),
+    ]));
+    $notifier = $this->mock(MaxNotifier::class);
+    $notifier->shouldNotReceive('sendWebsiteDown');
+    $notifier->shouldReceive('sendWebsiteRecovery')->times($nextCode === 200 ? 1 : 0);
+    $this->actingAs(User::factory()->create());
+    foreach ([false, true] as $enabled) {
+        $this->put('/websites/'.$site->id, websitePayload(['enabled' => $enabled]))->assertRedirect('/websites');
+        expect($site->refresh()->status)->toBe('offline')->and($site->last_http_status)->toBe(500)
+            ->and($site->last_response_ms)->toBe(42)
+            ->and($site->last_checked_at->equalTo(now()->subHour()))->toBeTrue()
+            ->and(Event::count())->toBe(0);
+    }
+    Http::assertNothingSent();
+    $this->artisan('monitor:websites')->assertSuccessful();
+    expect(Event::count())->toBe($nextCode === 200 ? 1 : 0);
+})->with([200, 500]);

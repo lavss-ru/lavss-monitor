@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Website;
 use App\Services\WebsiteHealthCheckService;
+use App\Services\WebsiteMonitoringService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -11,8 +12,10 @@ use Inertia\Response;
 
 class WebsiteController extends Controller
 {
-    public function __construct(private WebsiteHealthCheckService $healthCheck)
-    {
+    public function __construct(
+        private WebsiteHealthCheckService $healthCheck,
+        private WebsiteMonitoringService $monitoring,
+    ) {
     }
 
     /**
@@ -99,11 +102,16 @@ class WebsiteController extends Controller
 
     /**
      * Run a health-check for the given Website (manual trigger).
-     * Stage 3.1: no Events, no MAX notifications.
+     * Enabled sites record and notify significant status transitions.
      */
     public function check(Website $website): RedirectResponse
     {
-        $this->healthCheck->check($website);
+        if ($website->enabled) {
+            $this->monitoring->monitor($website);
+        } else {
+            // Disabled sites still allow manual diagnostics without notifications.
+            $this->healthCheck->check($website);
+        }
 
         return redirect()->route('websites.index');
     }
@@ -111,15 +119,15 @@ class WebsiteController extends Controller
     /**
      * Run health-check for all enabled websites (manual trigger).
      * Errors in one site do not stop the rest.
-     * Stage 3.1: no Events, no MAX notifications.
+     * Enabled sites record and notify significant status transitions.
      */
     public function checkAll(): RedirectResponse
     {
-        $websites = Website::where('enabled', true)->get();
+        $websites = Website::where('enabled', true)->orderBy('id')->get();
 
         foreach ($websites as $website) {
             try {
-                $this->healthCheck->check($website);
+                $this->monitoring->monitor($website);
             } catch (\Throwable $e) {
                 // One site failure must not prevent the rest from being checked
                 report($e);

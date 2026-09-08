@@ -24,6 +24,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $schedule->command('monitor:vps')
             ->everyMinute()
             ->withoutOverlapping(10);
+
+        $schedule->command('monitor:websites')
+            ->everyMinute()
+            ->withoutOverlapping(10);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
