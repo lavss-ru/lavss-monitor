@@ -39,7 +39,7 @@ test('website create and update validate input', function (string $field, mixed 
     $this->post('/websites', websitePayload([$field => $value]))->assertSessionHasErrors($field);
     $this->put('/websites/'.$site->id, websitePayload([$field => $value]))->assertSessionHasErrors($field);
     expect(Website::count())->toBe(1)->and($site->refresh()->url)->toBe('https://example.com');
-})->with([['name', ''], ['url', ''], ['url', 'ftp://example.com'], ['url', 'javascript:alert(1)'], ['url', 'https://example.com/'.str_repeat('a', 255)], ['type', 'vps'], ['enabled', 'yes']]);
+})->with([['name', ''], ['url', ''], ['url', 'ftp://example.com'], ['url', 'javascript:alert(1)'], ['url', 'example.com'], ['url', 'https:///path'], ['url', 'https://'], ['url', 'https://exa mple.com'], ['url', 'https://пример..рф'], ['url', 'https://example.com/'.str_repeat('a', 255)], ['type', 'vps'], ['enabled', 'yes']]);
 
 test('website accepts HTTP and HTTPS URLs', function (string $url) {
     $this->actingAs(User::factory()->create())->post('/websites', websitePayload(['url' => $url]))->assertSessionHasNoErrors();
@@ -147,3 +147,24 @@ test('disable and re-enable preserve measurements and the next transition baseli
     $this->artisan('monitor:websites')->assertSuccessful();
     expect(Event::count())->toBe($nextCode === 200 ? 1 : 0);
 })->with([200, 500]);
+
+
+test('website create and update preserve accepted display URLs and reset only real changes', function (string $url) {
+    Http::fake();
+    $this->actingAs(User::factory()->create());
+    $this->post('/websites', websitePayload(['url' => $url]))->assertRedirect('/websites')->assertSessionHasNoErrors();
+    $site = Website::sole();
+    expect($site->url)->toBe($url);
+    $site->update(['url' => 'https://old.example.com', 'status' => 'offline', 'last_http_status' => 500, 'last_response_ms' => 42, 'last_checked_at' => now()]);
+    $this->put('/websites/'.$site->id, websitePayload(['url' => $url]))->assertRedirect('/websites')->assertSessionHasNoErrors();
+    expect($site->refresh()->url)->toBe($url)->and($site->status)->toBe('unknown')
+        ->and($site->last_http_status)->toBeNull()->and($site->last_response_ms)->toBeNull()->and($site->last_checked_at)->toBeNull();
+    $site->update(['status' => 'online', 'last_http_status' => 200, 'last_response_ms' => 7, 'last_checked_at' => now()]);
+    $checkedAt = $site->last_checked_at->toISOString();
+    $this->put('/websites/'.$site->id, websitePayload(['url' => $url, 'name' => 'Renamed']))->assertSessionHasNoErrors();
+    expect($site->refresh()->url)->toBe($url)->and($site->status)->toBe('online')
+        ->and($site->last_http_status)->toBe(200)->and($site->last_response_ms)->toBe(7)
+        ->and($site->last_checked_at->toISOString())->toBe($checkedAt);
+    $this->get('/websites')->assertInertia(fn ($page) => $page->where('websiteList.0.url', $url));
+    Http::assertNothingSent();
+})->with(['https://учцентр-оскол.рф', 'https://xn----itbqehhbmlgi0bm.xn--p1ai', 'http://[::1]:8080/path']);

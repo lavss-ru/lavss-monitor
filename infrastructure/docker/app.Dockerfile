@@ -9,9 +9,10 @@ RUN apk add --no-cache \
     unzip \
     git \
     curl \
-    oniguruma-dev
+    oniguruma-dev \
+    icu-dev
 
-RUN docker-php-ext-install pdo pdo_pgsql pdo_sqlite mbstring zip fileinfo
+RUN docker-php-ext-install pdo pdo_pgsql pdo_sqlite mbstring zip fileinfo intl
 
 # Trust Russian national CA chain used by MAX Messenger API.
 COPY infrastructure/docker/certificates/russian_trusted_root_ca.crt /usr/local/share/ca-certificates/russian_trusted_root_ca.crt
