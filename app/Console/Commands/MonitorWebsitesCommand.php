@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Website;
 use App\Services\WebsiteMonitoringService;
+use App\Services\WebsiteAggregateService;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -13,19 +14,21 @@ class MonitorWebsitesCommand extends Command
 
     protected $description = 'Run HTTP health-checks for enabled websites and record status-change events.';
 
-    public function __construct(private WebsiteMonitoringService $monitoring)
+    public function __construct(private WebsiteMonitoringService $monitoring, private WebsiteAggregateService $aggregate)
     {
         parent::__construct();
     }
 
     public function handle(): int
     {
+        $checkedIds = [];
         $checked = $online = $offline = $changed = $errors = 0;
 
         foreach (Website::where('enabled', true)->orderBy('id')->get() as $website) {
             try {
                 $result = $this->monitoring->monitor($website);
                 $checked++;
+                $checkedIds[] = $website->id;
                 if ($result['status'] === 'online') {
                     $online++;
                 } else {
@@ -45,6 +48,8 @@ class MonitorWebsitesCommand extends Command
                 $this->line("[ERROR] {$website->name}: {$e->getMessage()}");
             }
         }
+
+        $this->aggregate->evaluate($errors === 0, $checkedIds);
 
         $this->newLine();
         $this->line("Summary: checked={$checked}  online={$online}  offline={$offline}  changed={$changed}  errors={$errors}");

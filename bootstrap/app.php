@@ -26,7 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
             ->withoutOverlapping(10);
 
         $schedule->command('monitor:websites')
-            ->everyMinute()
+            ->everyFiveMinutes()
             ->withoutOverlapping(10);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

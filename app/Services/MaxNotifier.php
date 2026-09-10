@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\Vps;
-use App\Models\Website;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -68,45 +67,29 @@ class MaxNotifier
         $this->send($text, $vps->name, 'recovery');
     }
 
-    public function sendWebsiteDown(Website $website): void
-    {
-        $this->sendWebsite($website, false);
-    }
-
-    public function sendWebsiteRecovery(Website $website): void
-    {
-        $this->sendWebsite($website, true);
-    }
-
-    private function sendWebsite(Website $website, bool $recovery): void
+    public function sendWebsiteAggregate(\Illuminate\Support\Collection $websites, bool $update): bool
     {
         if (! $this->isConfigured()) {
-            return;
+            return false;
         }
+        $lines = [$update ? '🔴 Изменение списка недоступных сайтов' : '🔴 Сайты недоступны', ''];
+        foreach ($websites as $website) {
+            $lines[] = "{$website->name} — {$website->url}";
+        }
+        return $this->send(implode("\n", $lines), 'websites', $update ? 'update' : 'down', 'website');
+    }
 
-        $http = $website->last_http_status !== null
-            ? 'HTTP '.$website->last_http_status
-            : 'HTTP-ответ не получен';
-        $timestamp = ($website->last_checked_at ?? now())->format('d.m.Y H:i:s T');
-        $timeLabel = $recovery ? 'Время восстановления' : 'Время';
-        $text = implode("\n", [
-            $recovery ? '🟢 Сайт снова доступен' : '🔴 Сайт недоступен',
-            '',
-            "Сайт: {$website->name}",
-            "URL: {$website->url}",
-            "Результат: {$http}",
-            "Длительность проверки: {$website->last_response_ms} ms",
-            "{$timeLabel}: {$timestamp}",
-        ]);
-
-        $this->send($text, $website->name, $recovery ? 'recovery' : 'down', 'website');
+    public function sendWebsiteAggregateRecovery(): bool
+    {
+        return $this->isConfigured()
+            && $this->send("🟢 Работа сайтов восстановлена\n\nВсе контролируемые сайты доступны.", 'websites', 'recovery', 'website');
     }
 
     /**
      * Perform the actual HTTP POST to MAX API.
      * All exceptions are caught so they never propagate to the caller.
      */
-    private function send(string $text, string $sourceName, string $kind, string $sourceType = 'vps'): void
+    private function send(string $text, string $sourceName, string $kind, string $sourceType = 'vps'): bool
     {
         $botToken = (string) config('services.max.bot_token');
         $userId   = (string) config('services.max.user_id');
@@ -121,20 +104,24 @@ class MaxNotifier
                     'text' => $text,
                 ]);
 
-            if (! $response->successful()) {
-                Log::error('MaxNotifier: MAX API returned non-2xx response', [
+            if (! $response->successful() || ($sourceType === 'website'
+                && ($response->json('success') === false || $response->json('error') !== null || $response->json('code') !== null))) {
+                Log::error($sourceType === 'website' ? 'MaxNotifier: MAX API rejected website notification' : 'MaxNotifier: MAX API returned non-2xx response', [
                     $sourceType => $sourceName,
                     'kind'   => $kind,
                     'status' => $response->status(),
                     'body'   => $response->body(),
                 ]);
+                return false;
             }
+            return true;
         } catch (\Throwable $e) {
             Log::error('MaxNotifier: failed to send MAX notification', [
                 $sourceType => $sourceName,
                 'kind'  => $kind,
                 'error' => $e->getMessage(),
             ]);
+            return false;
         }
     }
 }

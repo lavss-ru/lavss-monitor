@@ -97,11 +97,12 @@ test('enabled manual checks share transitions with the automatic command', funct
     Http::fake(['https://example.com' => Http::sequence()->push('', 404)->push('', 500)->push('', 200)]);
     $site = Website::create(websitePayload(['status' => 'online']));
     $notifier = $this->mock(MaxNotifier::class);
-    $notifier->shouldReceive('sendWebsiteDown')->once();
-    $notifier->shouldReceive('sendWebsiteRecovery')->once();
+    $notifier->shouldReceive('sendWebsiteAggregate')->once()->andReturn(true);
+    $notifier->shouldReceive('sendWebsiteAggregateRecovery')->once()->andReturn(true);
     $path = $all ? '/websites/check-all' : '/websites/'.$site->id.'/check';
     $this->actingAs(User::factory()->create())->post($path)->assertRedirect('/websites');
-    expect(Event::count())->toBe(1)->and(Event::sole()->severity)->toBe('warning');
+    expect(Event::count())->toBe(0);
+    $this->travel(10)->minutes();
     $this->artisan('monitor:websites')->assertSuccessful();
     expect(Event::count())->toBe(1)->and($site->fresh()->last_http_status)->toBe(500);
     $this->post($path)->assertRedirect('/websites');
@@ -112,8 +113,8 @@ test('disabled single diagnostics update measurements without events or MAX', fu
     Http::fake(['https://example.com' => Http::response('', $code)]);
     $site = Website::create(websitePayload(['enabled' => false, 'status' => $previous]));
     $notifier = $this->mock(MaxNotifier::class);
-    $notifier->shouldNotReceive('sendWebsiteDown');
-    $notifier->shouldNotReceive('sendWebsiteRecovery');
+    $notifier->shouldNotReceive('sendWebsiteAggregate');
+    $notifier->shouldNotReceive('sendWebsiteAggregateRecovery');
     $this->actingAs(User::factory()->create())->post('/websites/'.$site->id.'/check')->assertRedirect('/websites');
     expect($site->fresh()->status)->toBe($code < 400 ? 'online' : 'offline')
         ->and($site->fresh()->last_http_status)->toBe($code)
@@ -133,8 +134,8 @@ test('disable and re-enable preserve measurements and the next transition baseli
         'last_checked_at' => now()->subHour(),
     ]));
     $notifier = $this->mock(MaxNotifier::class);
-    $notifier->shouldNotReceive('sendWebsiteDown');
-    $notifier->shouldReceive('sendWebsiteRecovery')->times($nextCode === 200 ? 1 : 0);
+    $notifier->shouldNotReceive('sendWebsiteAggregate');
+    $notifier->shouldNotReceive('sendWebsiteAggregateRecovery');
     $this->actingAs(User::factory()->create());
     foreach ([false, true] as $enabled) {
         $this->put('/websites/'.$site->id, websitePayload(['enabled' => $enabled]))->assertRedirect('/websites');
@@ -145,7 +146,7 @@ test('disable and re-enable preserve measurements and the next transition baseli
     }
     Http::assertNothingSent();
     $this->artisan('monitor:websites')->assertSuccessful();
-    expect(Event::count())->toBe($nextCode === 200 ? 1 : 0);
+    expect(Event::count())->toBe(0);
 })->with([200, 500]);
 
 

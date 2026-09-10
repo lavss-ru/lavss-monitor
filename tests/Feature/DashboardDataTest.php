@@ -276,15 +276,17 @@ test('offline website without events requires attention and disabled websites ar
 test('website down and recovery update attention while preserving event history', function () {
     \Illuminate\Support\Facades\Http::preventStrayRequests();
     \Illuminate\Support\Facades\Http::fake([
-        'https://example.test' => \Illuminate\Support\Facades\Http::sequence()->push('', 404)->push('', 200),
+        'https://example.test' => \Illuminate\Support\Facades\Http::sequence()->push('', 404)->push('', 404)->push('', 200),
     ]);
     $this->travelTo(now()->startOfSecond());
     $site = Website::create(['name' => 'Monitored', 'url' => 'https://example.test']);
     $notifier = $this->mock(\App\Services\MaxNotifier::class);
-    $notifier->shouldReceive('sendWebsiteDown')->once();
-    $notifier->shouldReceive('sendWebsiteRecovery')->once();
+    $notifier->shouldNotReceive('sendWebsiteAggregate');
+    $notifier->shouldNotReceive('sendWebsiteAggregateRecovery');
     $this->actingAs(User::factory()->create());
     $service = app(\App\Services\WebsiteMonitoringService::class);
+    $service->monitor($site);
+    $this->travel(10)->minutes();
     $service->monitor($site);
     $this->get('/')->assertInertia(fn ($page) => $page
         ->has('dashboard.attentionItems', 1)

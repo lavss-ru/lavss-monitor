@@ -4,7 +4,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Support\Facades\Http;
 
-test('monitoring schedules run every minute in foreground with ten minute overlap locks', function (string $command) {
+test('monitoring schedules run at their approved intervals in foreground with ten minute overlap locks', function (string $command) {
     Http::preventStrayRequests();
     Http::fake();
 
@@ -18,7 +18,7 @@ test('monitoring schedules run every minute in foreground with ten minute overla
 
     expect($events)->toHaveCount(1);
     $event = $events->sole();
-    expect($event->expression)->toBe('* * * * *')
+    expect($event->expression)->toBe($command === 'monitor:websites' ? '*/5 * * * *' : '* * * * *')
         ->and($event->withoutOverlapping)->toBeTrue()
         ->and($event->expiresAt)->toBe(10)
         ->and($event->runInBackground)->toBeFalse();

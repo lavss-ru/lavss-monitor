@@ -3,18 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\Website;
-use App\Services\WebsiteHealthCheckService;
+use App\Models\WebsiteAggregateState;
+use App\Services\WebsiteAggregateService;
 use App\Services\WebsiteMonitoringService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class WebsiteController extends Controller
 {
     public function __construct(
-        private WebsiteHealthCheckService $healthCheck,
         private WebsiteMonitoringService $monitoring,
+        private WebsiteAggregateService $aggregate,
     ) {
     }
 
@@ -58,7 +60,10 @@ class WebsiteController extends Controller
 
         $validated['status'] = 'unknown';
 
-        Website::create($validated);
+        DB::transaction(function () use ($validated) {
+            WebsiteAggregateState::lock();
+            Website::create($validated);
+        });
 
         return redirect()->route('websites.index')->with('success', 'Сайт добавлен.');
     }
@@ -76,16 +81,28 @@ class WebsiteController extends Controller
             'description' => ['nullable', 'string'],
         ]);
 
-        if ($validated['url'] !== $website->url) {
-            $validated = array_merge($validated, [
-                'status' => 'unknown',
-                'last_checked_at' => null,
-                'last_response_ms' => null,
-                'last_http_status' => null,
-            ]);
-        }
+        DB::transaction(function () use ($validated, $website) {
+            WebsiteAggregateState::lock();
+            $website = Website::whereKey($website->id)->lockForUpdate()->firstOrFail();
+            if ($validated['url'] !== $website->url
+                || (array_key_exists('enabled', $validated) && (bool) $validated['enabled'] !== $website->enabled)) {
+                $validated = array_merge($validated, [
+                    'failure_started_at' => null,
+                    'incident_confirmed_at' => null,
+                    'incident_notified_at' => null,
+                ]);
+            }
+            if ($validated['url'] !== $website->url) {
+                $validated = array_merge($validated, [
+                    'status' => 'unknown',
+                    'last_checked_at' => null,
+                    'last_response_ms' => null,
+                    'last_http_status' => null,
+                ]);
+            }
 
-        $website->update($validated);
+            $website->update($validated);
+        });
 
         return redirect()->route('websites.index')->with('success', 'Сайт обновлён.');
     }
@@ -95,7 +112,10 @@ class WebsiteController extends Controller
      */
     public function destroy(Website $website): RedirectResponse
     {
-        $website->delete();
+        DB::transaction(function () use ($website) {
+            WebsiteAggregateState::lock();
+            $website->delete();
+        });
 
         return redirect()->route('websites.index')->with('success', 'Сайт удалён.');
     }
@@ -106,11 +126,9 @@ class WebsiteController extends Controller
      */
     public function check(Website $website): RedirectResponse
     {
-        if ($website->enabled) {
-            $this->monitoring->monitor($website);
-        } else {
-            // Disabled sites still allow manual diagnostics without notifications.
-            $this->healthCheck->check($website);
+        $result = $this->monitoring->monitor($website);
+        if ($result['enabled']) {
+            $this->aggregate->evaluate();
         }
 
         return redirect()->route('websites.index');
@@ -125,14 +143,20 @@ class WebsiteController extends Controller
     {
         $websites = Website::where('enabled', true)->orderBy('id')->get();
 
+        $succeeded = true;
+        $checkedIds = [];
         foreach ($websites as $website) {
             try {
                 $this->monitoring->monitor($website);
+                $checkedIds[] = $website->id;
             } catch (\Throwable $e) {
                 // One site failure must not prevent the rest from being checked
                 report($e);
+                $succeeded = false;
             }
         }
+
+        $this->aggregate->evaluate($succeeded, $checkedIds);
 
         return redirect()->route('websites.index');
     }
