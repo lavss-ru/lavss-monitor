@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react';
 import { Sidebar } from '@/Components/Dashboard/Sidebar';
 import { Header } from '@/Components/Dashboard/Header';
+import { startLocationsPolling } from './locationsPolling';
 
 interface Device {
     id: number; location_id: number; name: string; type: string; host: string; check_port: number;
@@ -59,6 +60,8 @@ function Editor({ kind, location, device, initialLocationId, locations, connecti
 }
 
 export default function Index(props: Props) {
+    useEffect(startLocationsPolling, []);
+
     const { locations } = props;
     const page = usePage();
     const [mobileOpen, setMobileOpen] = useState(false);
