@@ -85,6 +85,20 @@ class MaxNotifier
             && $this->send("🟢 Работа сайтов восстановлена\n\nВсе контролируемые сайты доступны.", 'websites', 'recovery', 'website');
     }
 
+    public function sendLocalDevice(\App\Models\LocalDevice $device, bool $recovery): bool
+    {
+        if (! $this->isConfigured()) {
+            return false;
+        }
+        $text = implode("\n", [
+            $recovery ? '🟢 Локальное устройство снова доступно' : '🔴 Локальное устройство недоступно',
+            '', "Устройство: {$device->name}", "Площадка: {$device->location->name}",
+            "TCP: {$device->endpoint()}",
+            'Время: '.($recovery ? $device->recovery_pending_at : $device->incident_confirmed_at)->format('d.m.Y H:i:s T'),
+        ]);
+        return $this->send($text, $device->name, $recovery ? 'recovery' : 'down', 'local_device');
+    }
+
     /**
      * Perform the actual HTTP POST to MAX API.
      * All exceptions are caught so they never propagate to the caller.
@@ -104,7 +118,7 @@ class MaxNotifier
                     'text' => $text,
                 ]);
 
-            if (! $response->successful() || ($sourceType === 'website'
+            if (! $response->successful() || (in_array($sourceType, ['website', 'local_device'], true)
                 && ($response->json('success') === false || $response->json('error') !== null || $response->json('code') !== null))) {
                 Log::error($sourceType === 'website' ? 'MaxNotifier: MAX API rejected website notification' : 'MaxNotifier: MAX API returned non-2xx response', [
                     $sourceType => $sourceName,

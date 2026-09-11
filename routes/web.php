@@ -9,6 +9,13 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
+    Route::get('/local-infrastructure', [\App\Http\Controllers\LocationController::class, 'index'])->name('local-infrastructure.index');
+    Route::resource('locations', \App\Http\Controllers\LocationController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::post('/local-devices/check-all', [\App\Http\Controllers\LocalDeviceController::class, 'checkAll'])->name('local-devices.check-all');
+    Route::post('/local-devices/{localDevice}/check', [\App\Http\Controllers\LocalDeviceController::class, 'check'])->name('local-devices.check');
+    Route::resource('local-devices', \App\Http\Controllers\LocalDeviceController::class)
+        ->only(['store', 'update', 'destroy'])->parameters(['local-devices' => 'localDevice']);
+
     // VPS / Servers
     Route::get('/vps', [VpsController::class, 'index'])->name('vps.index');
     Route::post('/vps', [VpsController::class, 'store'])->name('vps.store');

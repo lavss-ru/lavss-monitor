@@ -34,6 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen, onA
             active: url.startsWith('/vps'),
         },
         { name: 'Сайты', href: '/websites', icon: Globe, count: websiteCount ?? 0, active: url.startsWith('/websites') },
+        { name: 'Локальная инфраструктура', href: '/local-infrastructure', icon: Server, active: url.startsWith('/local-infrastructure') || url.startsWith('/locations') },
         { name: 'Proxmox', href: '#proxmox', icon: Cpu, count: 2 },
         { name: 'Контейнеры', href: '#containers', icon: Box, count: 2 },
         { name: 'WordPress', href: '#wordpress', icon: FileCode, count: 15 },

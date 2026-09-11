@@ -25,6 +25,10 @@ return Application::configure(basePath: dirname(__DIR__))
             ->everyMinute()
             ->withoutOverlapping(10);
 
+        $schedule->command('monitor:local-devices')
+            ->everyMinute()
+            ->withoutOverlapping(10);
+
         $schedule->command('monitor:websites')
             ->everyFiveMinutes()
             ->withoutOverlapping(10);

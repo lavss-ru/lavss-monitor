@@ -1,5 +1,13 @@
 # ROADMAP — lavss monitor
 
+## Текущие этапы monitoring
+
+* **Stage 3.4 — Local Infrastructure Monitoring:** Location + LocalDevice, TCP проверки, подтверждение инцидентов через 2 минуты, Events/MAX и Dashboard. Реализация подготовлена для review; см. [описание](docs/stage-3.4-local-infrastructure.md).
+* **Stage 3.5 — unified check history + uptime/statistics:** общая история и статистика Website, VPS и LocalDevice. Прежняя идея Stage 3.4 перенесена сюда.
+* **Позже:** detail pages/graphs, Location/gateway correlation, Proxmox API monitoring.
+
+Ниже сохранён первоначальный roadmap Alpha. Ограничения Windows/сетевых устройств относятся к специализированным метрикам: TCP доступность этих типов входит в Stage 3.4.
+
 ## Фаза 1: Alpha 0.1 (Текущий этап)
 
 **Цель:** Получить первый работающий вертикальный сценарий мониторинга на `https://monitor.lavss.ru`.

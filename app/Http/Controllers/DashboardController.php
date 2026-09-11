@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Event;
+use App\Models\LocalDevice;
 use App\Models\Infrastructure;
 use App\Models\Vps;
 use App\Models\Website;
@@ -17,6 +18,11 @@ class DashboardController extends Controller
      */
     public function index(Request $request): Response
     {
+        $localDevices = LocalDevice::monitored()->get();
+        $localDeviceSummary = ['total' => $localDevices->count(),
+            'online' => $localDevices->where('status', 'online')->count(),
+            'offline' => $localDevices->where('status', 'offline')->count(),
+            'unknown' => $localDevices->where('status', 'unknown')->count()];
         $vpsCollection = Vps::where('enabled', true)->get();
         $websiteCollection = Website::where('enabled', true)->get();
         $infrastructureCollection = Infrastructure::where('enabled', true)->get();
@@ -176,6 +182,7 @@ class DashboardController extends Controller
             : 'Все объекты и сервисы находятся в рабочем состоянии.';
 
         $dashboardData = [
+            'localDevices' => $localDeviceSummary,
             'overallStatus'  => $overallStatus,
             'statusTitle'    => $statusTitle,
             'statusSubtitle' => $statusSubtitle,

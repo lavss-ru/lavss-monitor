@@ -54,6 +54,11 @@ export default function Dashboard({ dashboard }: DashboardProps) {
                     {/* 4 Summary Cards */}
                     <SummaryCards summaries={dashboard.summaries} />
 
+                    <a href="/local-infrastructure" className="block my-6 rounded-2xl border border-slate-800 bg-slate-900/50 p-5 hover:border-cyan-700">
+                        <h3 className="font-semibold">Локальная инфраструктура</h3>
+                        <p className="mt-2 text-sm text-slate-400">Под мониторингом: {dashboard.localDevices.total} · <span className="text-emerald-400">Online: {dashboard.localDevices.online}</span> · <span className="text-rose-400">Offline: {dashboard.localDevices.offline}</span> · Не проверены: {dashboard.localDevices.unknown}</p>
+                    </a>
+
                     {/* Require Attention Block */}
                     <AttentionSection items={dashboard.attentionItems} />
 

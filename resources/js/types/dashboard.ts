@@ -51,6 +51,7 @@ export interface InfrastructureItem {
 }
 
 export interface DashboardData {
+    localDevices: { total: number; online: number; offline: number; unknown: number };
     overallStatus: 'ok' | 'warning' | 'critical';
     statusTitle: string;
     statusSubtitle: string;
