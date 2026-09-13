@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Website;
 use App\Models\WebsiteAggregateState;
+use App\Services\MonitorCheckStatisticsService;
+use App\Services\NotificationPolicyService;
 use App\Services\WebsiteAggregateService;
 use App\Services\WebsiteMonitoringService;
 use Illuminate\Http\RedirectResponse;
@@ -17,8 +19,7 @@ class WebsiteController extends Controller
     public function __construct(
         private WebsiteMonitoringService $monitoring,
         private WebsiteAggregateService $aggregate,
-    ) {
-    }
+    ) {}
 
     /**
      * Display the list of monitored websites.
@@ -27,14 +28,14 @@ class WebsiteController extends Controller
     {
         $websiteList = Website::orderBy('name')->get()->map(function (Website $site) {
             return [
-                'id'               => $site->id,
-                'name'             => $site->name,
-                'url'              => $site->url,
-                'type'             => $site->type,
-                'enabled'          => $site->enabled,
-                'description'      => $site->description,
-                'status'           => $site->status ?? 'unknown',
-                'last_checked_at'  => $site->last_checked_at?->toISOString(),
+                'id' => $site->id,
+                'name' => $site->name,
+                'url' => $site->url,
+                'type' => $site->type,
+                'enabled' => $site->enabled,
+                'description' => $site->description,
+                'status' => $site->status ?? 'unknown',
+                'last_checked_at' => $site->last_checked_at?->toISOString(),
                 'last_response_ms' => $site->last_response_ms,
                 'last_http_status' => $site->last_http_status,
             ];
@@ -42,7 +43,7 @@ class WebsiteController extends Controller
 
         return Inertia::render('Website/Index', [
             'websiteList' => $websiteList->values()->all(),
-            'websiteStats' => fn () => app(\App\Services\MonitorCheckStatisticsService::class)
+            'websiteStats' => fn () => app(MonitorCheckStatisticsService::class)
                 ->forMonitors('website', $websiteList->pluck('id')->all()),
         ]);
     }
@@ -53,10 +54,10 @@ class WebsiteController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'name'        => ['required', 'string', 'max:255'],
-            'url'         => ['required', 'string', 'max:255', 'url:http,https'],
-            'type'        => ['required', 'in:website,wordpress'],
-            'enabled'     => ['boolean'],
+            'name' => ['required', 'string', 'max:255'],
+            'url' => ['required', 'string', 'max:255', 'url:http,https'],
+            'type' => ['required', 'in:website,wordpress'],
+            'enabled' => ['boolean'],
             'description' => ['nullable', 'string'],
         ]);
 
@@ -76,10 +77,10 @@ class WebsiteController extends Controller
     public function update(Request $request, Website $website): RedirectResponse
     {
         $validated = $request->validate([
-            'name'        => ['required', 'string', 'max:255'],
-            'url'         => ['required', 'string', 'max:255', 'url:http,https'],
-            'type'        => ['required', 'in:website,wordpress'],
-            'enabled'     => ['boolean'],
+            'name' => ['required', 'string', 'max:255'],
+            'url' => ['required', 'string', 'max:255', 'url:http,https'],
+            'type' => ['required', 'in:website,wordpress'],
+            'enabled' => ['boolean'],
             'description' => ['nullable', 'string'],
         ]);
 
@@ -128,9 +129,10 @@ class WebsiteController extends Controller
      */
     public function check(Website $website): RedirectResponse
     {
-        $result = $this->monitoring->monitor($website, origin: 'manual');
+        $policy = NotificationPolicyService::load();
+        $result = $this->monitoring->monitor($website, origin: 'manual', policy: $policy);
         if ($result['enabled']) {
-            $this->aggregate->evaluate();
+            $this->aggregate->evaluate(policy: $policy);
         }
 
         return redirect()->route('websites.index');
@@ -143,13 +145,14 @@ class WebsiteController extends Controller
      */
     public function checkAll(): RedirectResponse
     {
+        $policy = NotificationPolicyService::load();
         $websites = Website::where('enabled', true)->orderBy('id')->get();
 
         $succeeded = true;
         $checkedIds = [];
         foreach ($websites as $website) {
             try {
-                $this->monitoring->monitor($website, origin: 'manual_batch');
+                $this->monitoring->monitor($website, origin: 'manual_batch', policy: $policy);
                 $checkedIds[] = $website->id;
             } catch (\Throwable $e) {
                 // One site failure must not prevent the rest from being checked
@@ -158,7 +161,7 @@ class WebsiteController extends Controller
             }
         }
 
-        $this->aggregate->evaluate($succeeded, $checkedIds);
+        $this->aggregate->evaluate($succeeded, $checkedIds, $policy);
 
         return redirect()->route('websites.index');
     }

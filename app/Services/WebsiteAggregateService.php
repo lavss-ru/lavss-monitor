@@ -11,14 +11,16 @@ class WebsiteAggregateService
     public function __construct(private MaxNotifier $notifier) {}
 
     /** One attempt at most. No transaction retry: HTTP is not transactional. */
-    public function evaluate(bool $batchSucceeded = true, ?array $checkedIds = null): void
+    public function evaluate(bool $batchSucceeded = true, ?array $checkedIds = null, ?NotificationPolicyService $policy = null): void
     {
-        DB::transaction(function () use ($batchSucceeded, $checkedIds) {
+        $policy ??= NotificationPolicyService::load();
+        DB::transaction(function () use ($batchSucceeded, $checkedIds, $policy) {
             $state = WebsiteAggregateState::lock();
             $sites = Website::where('enabled', true)->orderBy('id')->get();
             if ($sites->isEmpty()) {
                 // Monitoring was removed, not measured as recovered.
                 $state->update(['published_at' => null, 'snapshot' => null, 'fingerprint' => null]);
+
                 return;
             }
             $offline = $sites->where('status', 'offline');
@@ -26,9 +28,11 @@ class WebsiteAggregateService
                 if ($state->published_at !== null && $batchSucceeded
                     && $sites->every(fn ($site) => $site->status === 'online' && $site->last_checked_at !== null
                         && ($checkedIds === null || in_array($site->id, $checkedIds, true)))
-                    && $this->notifier->sendWebsiteAggregateRecovery()) {
+                    && (! $policy->recoveryEnabled('website')
+                        || ($policy->decision('website', true) === 'deliver' && $this->notifier->sendWebsiteAggregateRecovery($policy)))) {
                     $state->update(['published_at' => null, 'snapshot' => null, 'fingerprint' => null]);
                 }
+
                 return;
             }
 
@@ -43,7 +47,8 @@ class WebsiteAggregateService
                 // A grace member may now be confirmed, but was not notified as confirmed.
                 return;
             }
-            if (! $this->notifier->sendWebsiteAggregate($offline, $state->published_at !== null)) {
+            if ($policy->decision('website', false) !== 'deliver'
+                || ! $this->notifier->sendWebsiteAggregate($offline, $state->published_at !== null, $policy)) {
                 return;
             }
             $state->update(['published_at' => now(), 'snapshot' => $snapshot, 'fingerprint' => $fingerprint]);

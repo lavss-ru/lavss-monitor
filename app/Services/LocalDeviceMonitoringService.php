@@ -16,15 +16,17 @@ class LocalDeviceMonitoringService
      * Serialize checks and edits per device. Persist factual state before attempting MAX.
      * Batch callers recheck effective enabled state here, avoiding stale batch selections.
      */
-    public function monitor(LocalDevice $device, string $origin, bool $diagnostic = false): array
+    public function monitor(LocalDevice $device, string $origin, bool $diagnostic = false, ?NotificationPolicyService $policy = null): array
     {
+        $policy ??= NotificationPolicyService::load();
+
         return $this->history->observe('local_device', $device->id, $origin,
-            fn ($check) => $this->performMonitor($device, $diagnostic, $check));
+            fn ($check) => $this->performMonitor($device, $diagnostic, $check, $policy));
     }
 
-    private function performMonitor(LocalDevice $device, bool $diagnostic, \Closure $check): array
+    private function performMonitor(LocalDevice $device, bool $diagnostic, \Closure $check, NotificationPolicyService $policy): array
     {
-        $outcome = DB::transaction(function () use ($device, $diagnostic, $check) {
+        $outcome = DB::transaction(function () use ($device, $diagnostic, $check, $policy) {
             $device = LocalDevice::whereKey($device->id)->lockForUpdate()->firstOrFail();
             $enabled = $device->enabled && $device->location->enabled;
             if (! $enabled && ! $diagnostic) {
@@ -36,6 +38,7 @@ class LocalDeviceMonitoringService
                 // An unmeasured interval must not confirm a continuous TCP failure.
                 $device->update(['status' => 'unknown', 'last_checked_at' => null, 'last_response_ms' => null,
                     'failure_started_at' => $device->incident_confirmed_at ? $device->failure_started_at : null]);
+
                 return $error;
             }
             $down = $recovery = false;
@@ -45,14 +48,15 @@ class LocalDeviceMonitoringService
                     $device->recovery_pending_at = null;
                     $device->failure_started_at ??= $device->last_checked_at;
                     if ($device->incident_confirmed_at === null
-                        && $device->last_checked_at->greaterThanOrEqualTo($device->failure_started_at->copy()->addSeconds(120))) {
+                        && $device->last_checked_at->greaterThanOrEqualTo($device->failure_started_at->copy()->addSeconds($policy->delay('local_device')))) {
                         $device->incident_confirmed_at = $device->last_checked_at;
                         $down = true;
                     }
-                } else {
+                } elseif ($device->status === 'online') {
                     $recovery = $device->incident_confirmed_at !== null;
                     if ($recovery) {
-                        $device->recovery_pending_at = $device->last_checked_at;
+                        $device->recovery_pending_at = $device->incident_notified_at !== null && $policy->recoveryEnabled('local_device')
+                            ? $device->last_checked_at : null;
                         $device->resolveWarnings();
                     }
                     $device->failure_started_at = null;
@@ -67,37 +71,40 @@ class LocalDeviceMonitoringService
                         'severity' => $down ? 'warning' : 'info',
                         'title' => Str::limit("Локальное устройство {$device->name} {$state}", 255, ''),
                         'message' => "Устройство: {$device->name}. Площадка: {$device->location->name}. TCP: {$device->endpoint()}. "
-                            .($down ? 'Сбой подтверждён после 2 минут недоступности.' : 'TCP соединение снова устанавливается.'),
+                            .($down ? 'Сбой подтверждён после заданного интервала недоступности.' : 'TCP соединение снова устанавливается.'),
                         'occurred_at' => $device->last_checked_at,
                     ]);
                 }
             }
+
             return $result + ['event_created' => $down || $recovery, 'skipped' => false];
         });
         if ($outcome instanceof Throwable) {
             throw $outcome;
         }
         if (! $outcome['skipped']) {
-            $this->notify($device->id);
+            $this->notify($device->id, $policy);
         }
+
         return $outcome;
     }
 
-    private function notify(int $id): void
+    private function notify(int $id, NotificationPolicyService $policy): void
     {
         try {
             // No transaction retry: external delivery cannot be rolled back.
-            DB::transaction(function () use ($id) {
+            DB::transaction(function () use ($id, $policy) {
                 $device = LocalDevice::whereKey($id)->lockForUpdate()->first();
                 if (! $device || ! $device->enabled || ! $device->location->enabled) {
                     return;
                 }
                 if ($device->status === 'offline' && $device->incident_confirmed_at !== null && $device->incident_notified_at === null) {
-                    if ($this->notifier->sendLocalDevice($device, false)) {
+                    if ($policy->decision('local_device', false) === 'deliver' && $this->notifier->sendLocalDevice($device, false, $policy)) {
                         $device->update(['incident_notified_at' => now()]);
                     }
                 } elseif ($device->status === 'online' && $device->recovery_pending_at !== null) {
-                    if ($this->notifier->sendLocalDevice($device, true)) {
+                    if (! $policy->recoveryEnabled('local_device')
+                        || ($policy->decision('local_device', true) === 'deliver' && $this->notifier->sendLocalDevice($device, true, $policy))) {
                         $device->update(['recovery_pending_at' => null]);
                     }
                 }
@@ -109,16 +116,18 @@ class LocalDeviceMonitoringService
 
     public function checkAll(string $origin): array
     {
+        $policy = NotificationPolicyService::load();
         $checked = $errors = 0;
         foreach (LocalDevice::monitored()->orderBy('id')->get() as $device) {
             try {
-                $result = $this->monitor($device, origin: $origin);
+                $result = $this->monitor($device, origin: $origin, policy: $policy);
                 $checked += $result['skipped'] ? 0 : 1;
             } catch (Throwable $error) {
                 report($error);
                 $errors++;
             }
         }
+
         return ['checked' => $checked, 'errors' => $errors];
     }
 }

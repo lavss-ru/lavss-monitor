@@ -3,8 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Models\Website;
-use App\Services\WebsiteMonitoringService;
+use App\Services\NotificationPolicyService;
 use App\Services\WebsiteAggregateService;
+use App\Services\WebsiteMonitoringService;
 use Illuminate\Console\Command;
 use Throwable;
 
@@ -21,12 +22,13 @@ class MonitorWebsitesCommand extends Command
 
     public function handle(): int
     {
+        $policy = NotificationPolicyService::load();
         $checkedIds = [];
         $checked = $online = $offline = $changed = $errors = 0;
 
         foreach (Website::where('enabled', true)->orderBy('id')->get() as $website) {
             try {
-                $result = $this->monitoring->monitor($website, origin: 'scheduled');
+                $result = $this->monitoring->monitor($website, origin: 'scheduled', policy: $policy);
                 $checked++;
                 $checkedIds[] = $website->id;
                 if ($result['status'] === 'online') {
@@ -49,7 +51,7 @@ class MonitorWebsitesCommand extends Command
             }
         }
 
-        $this->aggregate->evaluate($errors === 0, $checkedIds);
+        $this->aggregate->evaluate($errors === 0, $checkedIds, $policy);
 
         $this->newLine();
         $this->line("Summary: checked={$checked}  online={$online}  offline={$offline}  changed={$changed}  errors={$errors}");

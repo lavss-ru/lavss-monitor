@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Vps;
+use App\Services\NotificationPolicyService;
 use App\Services\VpsMonitoringService;
 use Illuminate\Console\Command;
 use Throwable;
@@ -29,17 +30,18 @@ class MonitorVpsCommand extends Command
      */
     public function handle(): int
     {
+        $policy = NotificationPolicyService::load();
         $vpsList = Vps::where('enabled', true)->get();
 
         $checked = 0;
-        $online  = 0;
+        $online = 0;
         $offline = 0;
         $changed = 0;
-        $errors  = 0;
+        $errors = 0;
 
         foreach ($vpsList as $vps) {
             try {
-                $result = $this->monitoring->monitor($vps, origin: 'scheduled');
+                $result = $this->monitoring->monitor($vps, origin: 'scheduled', policy: $policy);
 
                 $checked++;
 

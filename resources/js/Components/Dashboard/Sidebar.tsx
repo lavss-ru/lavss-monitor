@@ -17,7 +17,7 @@ import {
 interface SidebarProps {
     mobileOpen: boolean;
     setMobileOpen: (open: boolean) => void;
-    onAddObjectClick: () => void;
+    onAddObjectClick?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen, onAddObjectClick }) => {
@@ -39,7 +39,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen, onA
         { name: 'Контейнеры', href: '#containers', icon: Box, count: 2 },
         { name: 'WordPress', href: '#wordpress', icon: FileCode, count: 15 },
         { name: 'События', href: '#events', icon: Activity },
-        { name: 'Настройки', href: '#settings', icon: Settings },
+        { name: 'Настройки', href: '/settings/notifications', icon: Settings, active: url.startsWith('/settings') },
     ];
 
     const sidebarContent = (
@@ -65,7 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen, onA
             </div>
 
             {/* Quick Action Button */}
-            <div className="my-5">
+            {onAddObjectClick && <div className="my-5">
                 <button
                     onClick={onAddObjectClick}
                     className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-medium py-2.5 px-4 rounded-xl shadow-lg shadow-blue-500/20 transition-all duration-200 active:scale-[0.98]"
@@ -73,7 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen, onA
                     <PlusCircle className="w-5 h-5" />
                     <span>Добавить объект</span>
                 </button>
-            </div>
+            </div>}
 
             {/* Navigation Menu */}
             <nav className="flex-1 space-y-1.5 overflow-y-auto pr-1">

@@ -13,21 +13,22 @@ class WebsiteMonitoringService
     public function __construct(
         private WebsiteHealthCheckService $healthCheck,
         private MonitorCheckRecorder $history,
-    ) {
-    }
+    ) {}
 
     /**
      * @return array{enabled: bool, status: string, http_status: int|null, response_ms: int, previous_status: string|null, event_created: bool}
      */
-    public function monitor(Website $website, string $origin): array
+    public function monitor(Website $website, string $origin, ?NotificationPolicyService $policy = null): array
     {
+        $policy ??= NotificationPolicyService::load();
+
         return $this->history->observe('website', $website->id, $origin,
-            fn ($check) => $this->performMonitor($website, $check));
+            fn ($check) => $this->performMonitor($website, $check, $policy));
     }
 
-    private function performMonitor(Website $website, \Closure $check): array
+    private function performMonitor(Website $website, \Closure $check, NotificationPolicyService $policy): array
     {
-        $outcome = DB::transaction(function () use ($website, $check) {
+        $outcome = DB::transaction(function () use ($website, $check, $policy) {
             WebsiteAggregateState::lock();
             // Reload after locking: route-bound and batch models may be stale.
             $website = Website::whereKey($website->id)->lockForUpdate()->firstOrFail();
@@ -38,6 +39,7 @@ class WebsiteMonitoringService
                 // Persist uncertainty so a later single-check evaluation cannot use stale online health.
                 $website->update(['status' => 'unknown', 'last_checked_at' => null,
                     'last_http_status' => null, 'last_response_ms' => null]);
+
                 return $error;
             }
             $new = $website->status;
@@ -47,7 +49,7 @@ class WebsiteMonitoringService
                 if ($new === 'offline') {
                     $website->failure_started_at ??= $website->last_checked_at;
                     if ($website->incident_confirmed_at === null
-                        && $website->last_checked_at->greaterThanOrEqualTo($website->failure_started_at->copy()->addMinutes(10))) {
+                        && $website->last_checked_at->greaterThanOrEqualTo($website->failure_started_at->copy()->addSeconds($policy->delay('website')))) {
                         $website->incident_confirmed_at = $website->last_checked_at;
                         $down = true;
                     }
@@ -89,6 +91,7 @@ class WebsiteMonitoringService
         if ($outcome instanceof \Throwable) {
             throw $outcome;
         }
+
         return $outcome;
     }
 }

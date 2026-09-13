@@ -4,6 +4,9 @@ namespace App\Services;
 
 use App\Models\Event;
 use App\Models\Vps;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Throwable;
 
 class VpsMonitoringService
 {
@@ -11,109 +14,93 @@ class VpsMonitoringService
         private VpsHealthCheckService $healthCheck,
         private MaxNotifier $notifier,
         private MonitorCheckRecorder $history,
-    ) {
-    }
+    ) {}
 
-    /**
-     * Run a health-check for one VPS, compare old/new status,
-     * and create an Event only when the status transitions.
-     *
-     * @return array{
-     *   status: string,
-     *   response_ms: int|null,
-     *   previous_status: string|null,
-     *   event_created: bool,
-     * }
-     */
-    public function monitor(Vps $vps, string $origin): array
+    public function monitor(Vps $vps, string $origin, ?NotificationPolicyService $policy = null): array
     {
+        $policy ??= NotificationPolicyService::load();
+
         return $this->history->observe('vps', $vps->id, $origin,
-            fn ($check) => $this->performMonitor($vps, $check));
+            fn ($check) => $this->performMonitor($vps, $check, $policy));
     }
 
-    private function performMonitor(Vps $vps, \Closure $check): array
+    private function performMonitor(Vps $vps, \Closure $check, NotificationPolicyService $policy): array
     {
-        $previousStatus = $vps->status; // captures state before check
+        $outcome = DB::transaction(function () use ($vps, $check, $policy) {
+            $vps = Vps::whereKey($vps->id)->lockForUpdate()->firstOrFail();
+            $previous = $vps->status;
+            // Pre-3.6 offline state has no delivery evidence. Preserve its Event transition
+            // semantics, but never infer that MAX received a red notification.
+            $legacy = $previous === 'offline' && $vps->failure_started_at === null;
+            try {
+                $result = $check(fn () => $this->healthCheck->check($vps));
+            } catch (Throwable $error) {
+                $vps->update(['status' => 'unknown', 'last_checked_at' => null, 'last_response_ms' => null,
+                    'failure_started_at' => $vps->incident_confirmed_at ? $vps->failure_started_at : null]);
 
-        $result = $check(fn () => $this->healthCheck->check($vps));
-        // After check(), $vps->refresh() not needed — check() calls $vps->update()
-        // which updates the model in-place via mass-assignment.
+                return $error;
+            }
+            $down = $recovery = false;
+            if ($vps->enabled) {
+                if ($vps->status === 'offline') {
+                    $vps->recovery_pending_at = null;
+                    $vps->failure_started_at ??= $vps->last_checked_at;
+                    if ($vps->incident_confirmed_at === null
+                        && $vps->last_checked_at->greaterThanOrEqualTo($vps->failure_started_at->copy()->addSeconds($policy->delay('vps')))) {
+                        $vps->incident_confirmed_at = $vps->last_checked_at;
+                        $down = ! $legacy;
+                    }
+                } elseif ($vps->status === 'online') {
+                    $recovery = $vps->incident_confirmed_at !== null || $legacy;
+                    if ($recovery) {
+                        $vps->recovery_pending_at = $vps->incident_notified_at !== null && $policy->recoveryEnabled('vps')
+                            ? $vps->last_checked_at : null;
+                        Event::where('type', 'vps')->where('source_id', $vps->id)->where('severity', 'warning')
+                            ->whereNull('resolved_at')->update(['resolved_at' => now()]);
+                    }
+                    $vps->failure_started_at = $vps->incident_confirmed_at = $vps->incident_notified_at = null;
+                }
+                $vps->save();
+                if ($down || $recovery) {
+                    $state = $down ? 'недоступен' : 'восстановлен';
+                    $ms = $result['response_ms'] ?? null;
+                    Event::create([
+                        'type' => 'vps', 'source_id' => $vps->id, 'severity' => $down ? 'warning' : 'info',
+                        'title' => Str::limit("VPS {$vps->name} {$state}", 255, ''),
+                        'message' => "TCP connect к {$vps->ip_address}:{$vps->check_port} "
+                            .($down ? 'не удался.' : 'снова успешен'.($ms !== null ? ", отклик {$ms} ms." : '.')),
+                        'occurred_at' => $vps->last_checked_at,
+                    ]);
+                }
+            }
+
+            return $result + ['previous_status' => $previous, 'event_created' => $down || $recovery];
+        });
+        if ($outcome instanceof Throwable) {
+            throw $outcome;
+        }
+        try {
+            DB::transaction(function () use ($vps, $policy) {
+                $vps = Vps::whereKey($vps->id)->lockForUpdate()->first();
+                if (! $vps || ! $vps->enabled) {
+                    return;
+                }
+                if ($vps->status === 'offline' && $vps->incident_confirmed_at !== null && $vps->incident_notified_at === null) {
+                    if ($policy->decision('vps', false) === 'deliver' && $this->notifier->sendDown($vps, $policy)) {
+                        $vps->update(['incident_notified_at' => now()]);
+                    }
+                } elseif ($vps->status === 'online' && $vps->recovery_pending_at !== null) {
+                    if (! $policy->recoveryEnabled('vps')
+                        || ($policy->decision('vps', true) === 'deliver' && $this->notifier->sendRecovery($vps, $policy))) {
+                        $vps->update(['recovery_pending_at' => null]);
+                    }
+                }
+            });
+        } catch (Throwable $error) {
+            report($error);
+        }
         $vps->refresh();
-        $newStatus = $vps->status;
 
-        $eventCreated = $this->createEventIfNeeded($vps, $previousStatus, $newStatus, $result);
-
-        return [
-            'status'          => $newStatus,
-            'response_ms'     => $result['response_ms'] ?? null,
-            'previous_status' => $previousStatus,
-            'event_created'   => $eventCreated,
-        ];
-    }
-
-    /**
-     * Determine if a status transition warrants an event and create it.
-     *
-     * Transitions that create events:
-     *   online  → offline  : warning
-     *   unknown → offline  : warning
-     *   offline → online   : info (recovery)
-     *
-     * Transitions that do NOT create events:
-     *   online  → online   : no change
-     *   offline → offline  : no change
-     *   unknown → online   : first-time success, not worth noising
-     *   unknown → unknown  : not applicable
-     */
-    private function createEventIfNeeded(
-        Vps $vps,
-        ?string $oldStatus,
-        string $newStatus,
-        array $checkResult,
-    ): bool {
-        // Normalise null → 'unknown'
-        $old = $oldStatus ?? 'unknown';
-
-        // No transition — nothing to record
-        if ($old === $newStatus) {
-            return false;
-        }
-
-        // unknown → online: silent first-time success
-        if ($old === 'unknown' && $newStatus === 'online') {
-            return false;
-        }
-
-        // online → offline OR unknown → offline: warning
-        if ($newStatus === 'offline') {
-            Event::create([
-                'type'        => 'vps',
-                'severity'    => 'warning',
-                'title'       => "VPS {$vps->name} недоступен",
-                'message'     => "TCP connect к {$vps->ip_address}:{$vps->check_port} не удался.",
-                'source_id'   => $vps->id,
-                'occurred_at' => now(),
-            ]);
-            $this->notifier->sendDown($vps);
-            return true;
-        }
-
-        // offline → online: recovery info
-        if ($old === 'offline' && $newStatus === 'online') {
-            $ms = $checkResult['response_ms'] ?? null;
-            $msText = $ms !== null ? ", отклик {$ms} ms." : '.';
-            Event::create([
-                'type'        => 'vps',
-                'severity'    => 'info',
-                'title'       => "VPS {$vps->name} восстановлен",
-                'message'     => "TCP connect к {$vps->ip_address}:{$vps->check_port} снова успешен{$msText}",
-                'source_id'   => $vps->id,
-                'occurred_at' => now(),
-            ]);
-            $this->notifier->sendRecovery($vps);
-            return true;
-        }
-
-        return false;
+        return $outcome;
     }
 }

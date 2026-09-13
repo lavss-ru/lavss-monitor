@@ -97,6 +97,7 @@ test('B: unknown to offline calls MaxNotifier sendDown once', function () {
 
 test('C: offline to offline calls MaxNotifier never', function () {
     $vps = maxVps('VPS-C', 'offline');
+    $vps->update(['failure_started_at' => now(), 'incident_confirmed_at' => now(), 'incident_notified_at' => now()]);
 
     $notifier = test()->mock(MaxNotifier::class);
     $notifier->shouldReceive('sendDown')->never();
@@ -112,12 +113,12 @@ test('C: offline to offline calls MaxNotifier never', function () {
 
 // ─── D. offline → online ──────────────────────────────────────────────────────
 
-test('D: offline to online calls MaxNotifier sendRecovery once', function () {
+test('D: legacy offline recovery without delivered DOWN never calls MAX', function () {
     $vps = maxVps('VPS-D', 'offline');
 
     $notifier = test()->mock(MaxNotifier::class);
     $notifier->shouldReceive('sendDown')->never();
-    $notifier->shouldReceive('sendRecovery')->once();
+    $notifier->shouldReceive('sendRecovery')->never();
 
     maxMockCheck('online', 14);
 

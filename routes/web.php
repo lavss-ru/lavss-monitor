@@ -6,6 +6,8 @@ use App\Http\Controllers\WebsiteController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth'])->group(function () {
+    Route::get('/settings/notifications', [\App\Http\Controllers\NotificationSettingsController::class, 'edit'])->name('settings.notifications');
+    Route::put('/settings/notifications', [\App\Http\Controllers\NotificationSettingsController::class, 'update'])->name('settings.notifications.update');
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard', [DashboardController::class, 'index']);
 

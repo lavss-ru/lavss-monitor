@@ -100,13 +100,13 @@ test('failed recovery persists pending state retries on online and never duplica
     expect(count(Http::recorded()))->toBe($count);
 });
 
-test('confirmed recovery is reported even if down delivery never succeeded', function () {
+test('confirmed recovery keeps Event but no orphan green if down delivery never succeeded', function () {
     localHttpFake(['https://max.invalid/*' => Http::response([], 500)]);
     $device = localDevice(); localMonitor($device); $this->travel(2)->minutes(); localMonitor($device);
     localHttpFake(['https://max.invalid/*' => Http::response(['success' => true])]);
     localFakeCheck('online'); localMonitor($device);
     expect(Event::count())->toBe(2)->and($device->fresh()->recovery_pending_at)->toBeNull();
-    Http::assertSent(fn ($request) => str_contains($request['text'], '🟢'));
+    Http::assertNothingSent();
 });
 
 test('new outage discards stale recovery and starts a fresh two minute incident', function () {
