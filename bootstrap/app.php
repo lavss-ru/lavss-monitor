@@ -21,6 +21,10 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withSchedule(function (Schedule $schedule): void {
+        $schedule->command('monitor:prune-check-history')
+            ->dailyAt('03:15')
+            ->withoutOverlapping(120);
+
         $schedule->command('monitor:vps')
             ->everyMinute()
             ->withoutOverlapping(10);

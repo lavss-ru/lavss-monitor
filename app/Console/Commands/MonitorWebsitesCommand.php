@@ -26,7 +26,7 @@ class MonitorWebsitesCommand extends Command
 
         foreach (Website::where('enabled', true)->orderBy('id')->get() as $website) {
             try {
-                $result = $this->monitoring->monitor($website);
+                $result = $this->monitoring->monitor($website, origin: 'scheduled');
                 $checked++;
                 $checkedIds[] = $website->id;
                 if ($result['status'] === 'online') {

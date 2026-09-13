@@ -44,7 +44,7 @@ test('online to offline creates exactly one warning event', function () {
 
     /** @var VpsMonitoringService $service */
     $service = app(VpsMonitoringService::class);
-    $result  = $service->monitor($vps);
+    $result  = $service->monitor($vps, origin: 'scheduled');
 
     expect($result['event_created'])->toBeTrue();
     expect(Event::count())->toBe(1);
@@ -61,7 +61,7 @@ test('offline to offline does not create an event', function () {
     $vps = makeVps('VPS-B', 'offline');
     mockCheck('offline');
 
-    $result = app(VpsMonitoringService::class)->monitor($vps);
+    $result = app(VpsMonitoringService::class)->monitor($vps, origin: 'scheduled');
 
     expect($result['event_created'])->toBeFalse();
     expect(Event::count())->toBe(0);
@@ -73,7 +73,7 @@ test('offline to online creates exactly one recovery info event', function () {
     $vps = makeVps('VPS-C', 'offline');
     mockCheck('online', 14);
 
-    $result = app(VpsMonitoringService::class)->monitor($vps);
+    $result = app(VpsMonitoringService::class)->monitor($vps, origin: 'scheduled');
 
     expect($result['event_created'])->toBeTrue();
     expect(Event::count())->toBe(1);
@@ -91,7 +91,7 @@ test('online to online does not create an event', function () {
     $vps = makeVps('VPS-D', 'online');
     mockCheck('online');
 
-    $result = app(VpsMonitoringService::class)->monitor($vps);
+    $result = app(VpsMonitoringService::class)->monitor($vps, origin: 'scheduled');
 
     expect($result['event_created'])->toBeFalse();
     expect(Event::count())->toBe(0);
@@ -103,7 +103,7 @@ test('unknown to offline creates a warning event', function () {
     $vps = makeVps('VPS-E', 'unknown');
     mockCheck('offline');
 
-    $result = app(VpsMonitoringService::class)->monitor($vps);
+    $result = app(VpsMonitoringService::class)->monitor($vps, origin: 'scheduled');
 
     expect($result['event_created'])->toBeTrue();
     expect(Event::count())->toBe(1);
@@ -116,7 +116,7 @@ test('unknown to online does not create an event', function () {
     $vps = makeVps('VPS-F', 'unknown');
     mockCheck('online');
 
-    $result = app(VpsMonitoringService::class)->monitor($vps);
+    $result = app(VpsMonitoringService::class)->monitor($vps, origin: 'scheduled');
 
     expect($result['event_created'])->toBeFalse();
     expect(Event::count())->toBe(0);

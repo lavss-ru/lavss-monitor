@@ -42,6 +42,8 @@ class WebsiteController extends Controller
 
         return Inertia::render('Website/Index', [
             'websiteList' => $websiteList->values()->all(),
+            'websiteStats' => fn () => app(\App\Services\MonitorCheckStatisticsService::class)
+                ->forMonitors('website', $websiteList->pluck('id')->all()),
         ]);
     }
 
@@ -126,7 +128,7 @@ class WebsiteController extends Controller
      */
     public function check(Website $website): RedirectResponse
     {
-        $result = $this->monitoring->monitor($website);
+        $result = $this->monitoring->monitor($website, origin: 'manual');
         if ($result['enabled']) {
             $this->aggregate->evaluate();
         }
@@ -147,7 +149,7 @@ class WebsiteController extends Controller
         $checkedIds = [];
         foreach ($websites as $website) {
             try {
-                $this->monitoring->monitor($website);
+                $this->monitoring->monitor($website, origin: 'manual_batch');
                 $checkedIds[] = $website->id;
             } catch (\Throwable $e) {
                 // One site failure must not prevent the rest from being checked

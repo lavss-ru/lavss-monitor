@@ -12,21 +12,28 @@ class WebsiteMonitoringService
 {
     public function __construct(
         private WebsiteHealthCheckService $healthCheck,
+        private MonitorCheckRecorder $history,
     ) {
     }
 
     /**
      * @return array{enabled: bool, status: string, http_status: int|null, response_ms: int, previous_status: string|null, event_created: bool}
      */
-    public function monitor(Website $website): array
+    public function monitor(Website $website, string $origin): array
     {
-        $outcome = DB::transaction(function () use ($website) {
+        return $this->history->observe('website', $website->id, $origin,
+            fn ($check) => $this->performMonitor($website, $check));
+    }
+
+    private function performMonitor(Website $website, \Closure $check): array
+    {
+        $outcome = DB::transaction(function () use ($website, $check) {
             WebsiteAggregateState::lock();
             // Reload after locking: route-bound and batch models may be stale.
             $website = Website::whereKey($website->id)->lockForUpdate()->firstOrFail();
             $previousStatus = $website->status;
             try {
-                $result = $this->healthCheck->check($website);
+                $result = $check(fn () => $this->healthCheck->check($website));
             } catch (\Throwable $error) {
                 // Persist uncertainty so a later single-check evaluation cannot use stale online health.
                 $website->update(['status' => 'unknown', 'last_checked_at' => null,

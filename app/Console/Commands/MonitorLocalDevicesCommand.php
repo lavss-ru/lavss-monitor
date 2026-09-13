@@ -12,7 +12,7 @@ class MonitorLocalDevicesCommand extends Command
 
     public function handle(LocalDeviceMonitoringService $monitoring): int
     {
-        $result = $monitoring->checkAll();
+        $result = $monitoring->checkAll(origin: 'scheduled');
         $this->line("checked={$result['checked']} errors={$result['errors']}");
         return $result['errors'] > 0 ? self::FAILURE : self::SUCCESS;
     }

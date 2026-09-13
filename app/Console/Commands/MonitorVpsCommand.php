@@ -39,7 +39,7 @@ class MonitorVpsCommand extends Command
 
         foreach ($vpsList as $vps) {
             try {
-                $result = $this->monitoring->monitor($vps);
+                $result = $this->monitoring->monitor($vps, origin: 'scheduled');
 
                 $checked++;
 

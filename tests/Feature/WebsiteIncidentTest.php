@@ -224,11 +224,11 @@ test('manual check all checks whole batch before one MAX attempt', function () {
 test('stale model checks reload persisted incident state before processing', function () {
     $a = incidentSite();
     $stale = Website::find($a->id);
-    app(WebsiteMonitoringService::class)->monitor($a);
+    app(WebsiteMonitoringService::class)->monitor($a, origin: 'scheduled');
     $this->travel(10)->minutes();
-    app(WebsiteMonitoringService::class)->monitor($a);
+    app(WebsiteMonitoringService::class)->monitor($a, origin: 'scheduled');
     app(WebsiteAggregateService::class)->evaluate();
-    app(WebsiteMonitoringService::class)->monitor($stale);
+    app(WebsiteMonitoringService::class)->monitor($stale, origin: 'scheduled');
     app(WebsiteAggregateService::class)->evaluate();
     expect(Event::count())->toBe(1)->and($this->messages)->toHaveCount(1);
 });

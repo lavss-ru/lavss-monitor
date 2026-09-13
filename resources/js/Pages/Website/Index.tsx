@@ -1,3 +1,5 @@
+import MonitorUptime from '@/Components/MonitorUptime';
+import { MonitorStatsMap } from '@/types/monitorChecks';
 import { useState } from 'react';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { Globe, PlusCircle, RefreshCw, Pencil, Trash2 } from 'lucide-react';
@@ -28,7 +30,7 @@ function WebsiteForm({ site, onClose }: { site: WebsiteRecord | null; onClose: (
     </form>;
 }
 
-export default function WebsiteIndex({ websiteList }: { websiteList: WebsiteRecord[] }) {
+export default function WebsiteIndex({ websiteList, websiteStats }: { websiteList: WebsiteRecord[]; websiteStats: MonitorStatsMap }) {
     const user = usePage().props.auth.user;
     const [mobileOpen, setMobileOpen] = useState(false);
     const [editing, setEditing] = useState<WebsiteRecord | null | undefined>(undefined);
@@ -55,7 +57,7 @@ export default function WebsiteIndex({ websiteList }: { websiteList: WebsiteReco
                 {actionError && <p role="alert" className="text-rose-400 mb-4">{actionError}</p>}
                 {websiteList.length === 0 ? <div className="text-center py-24"><Globe className="mx-auto w-12 h-12 text-slate-500 mb-4" /><h3 className="text-lg font-semibold">Нет сайтов</h3><p className="text-slate-400 mt-2">Добавьте первый сайт, чтобы проверить его доступность.</p></div> : <div className="space-y-3">{websiteList.map(site => <article key={site.id} className={`rounded-2xl border p-5 bg-slate-900/70 ${site.enabled && site.status === 'offline' ? 'border-rose-500/30' : 'border-slate-800'}`}>
                     <div className="flex flex-wrap items-center justify-between gap-4"><div className="min-w-0"><div className="flex flex-wrap gap-3 items-center"><h3 className="font-bold break-all">{site.name}</h3><span className={`text-xs font-mono rounded-lg px-2 py-1 ${site.status === 'online' ? 'bg-emerald-500/10 text-emerald-400' : site.status === 'offline' ? 'bg-rose-500/10 text-rose-400' : 'bg-slate-800 text-slate-400'}`}>{site.status.toUpperCase()}</span><span className="text-xs text-slate-400">{site.type === 'wordpress' ? 'WordPress' : 'Website'} · {site.enabled ? 'Включён' : 'Отключён'}</span></div><a href={site.url} target="_blank" rel="noreferrer" className="text-cyan-400 text-sm break-all">{site.url}</a></div><div className="flex gap-2"><button className={buttonClass} disabled={checking !== null} onClick={() => check(site.id)}><RefreshCw className={`w-4 h-4 ${checking === site.id || (checking === 'all' && site.enabled) ? 'animate-spin' : ''}`} />Проверить</button><button className={buttonClass} aria-label={`Редактировать ${site.name}`} onClick={() => setEditing(site)}><Pencil className="w-4 h-4" /></button><button className={buttonClass} aria-label={`Удалить ${site.name}`} onClick={() => setDeleting(site)}><Trash2 className="w-4 h-4" /></button></div></div>
-                    <div className="flex flex-wrap gap-4 mt-3 text-xs font-mono text-slate-400"><span>HTTP: {site.last_http_status ?? '—'}</span><span>Отклик: {site.last_response_ms === null ? '—' : `${site.last_response_ms} ms`}</span><span>Проверен: {site.last_checked_at ? new Date(site.last_checked_at).toLocaleString('ru-RU') : 'никогда'}</span></div>{site.description && <p className="text-sm text-slate-400 mt-3 break-words">{site.description}</p>}
+                    <div className="flex flex-wrap gap-4 mt-3 text-xs font-mono text-slate-400"><span>HTTP: {site.last_http_status ?? '—'}</span><span>Отклик: {site.last_response_ms === null ? '—' : `${site.last_response_ms} ms`}</span><span>Проверен: {site.last_checked_at ? new Date(site.last_checked_at).toLocaleString('ru-RU') : 'никогда'}</span></div><MonitorUptime stats={websiteStats[site.id]} />{site.description && <p className="text-sm text-slate-400 mt-3 break-words">{site.description}</p>}
                 </article>)}</div>}
             </main>
         </div>

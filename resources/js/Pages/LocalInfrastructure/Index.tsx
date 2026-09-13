@@ -1,3 +1,5 @@
+import MonitorUptime from '@/Components/MonitorUptime';
+import { MonitorStatsMap } from '@/types/monitorChecks';
 import React, { useEffect, useState } from 'react';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react';
@@ -13,7 +15,7 @@ interface Device {
 interface Location {
     id: number; name: string; description: string | null; connection_type: string; enabled: boolean; devices: Device[];
 }
-interface Props { locations: Location[]; connectionTypes: string[]; deviceTypes: string[] }
+interface Props { localDeviceStats: MonitorStatsMap; locations: Location[]; connectionTypes: string[]; deviceTypes: string[] }
 const connections: Record<string, string> = { local: 'Локальная сеть', wireguard: 'WireGuard', vpn: 'VPN', other: 'Другое' };
 const types: Record<string, string> = { proxmox: 'Proxmox', linux_server: 'Linux сервер', windows_server: 'Windows сервер', router: 'Роутер', vm: 'Виртуальная машина', network_device: 'Сетевое устройство', other: 'Другое' };
 const button = 'rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed';
@@ -95,6 +97,7 @@ export default function Index(props: Props) {
                     </div>
                     {!location.devices.length ? <p className="p-5 text-sm text-slate-400">В этой площадке пока нет устройств.</p> : <div className="divide-y divide-slate-800">{location.devices.map(device => <article key={device.id} className="flex flex-wrap items-center justify-between gap-4 p-5">
                         <div className="min-w-0"><h3 className="font-semibold">{device.name} <span className="ml-2 text-xs font-normal text-slate-400">{types[device.type]}</span></h3><p className="break-all font-mono text-sm text-slate-400">{device.host.includes(':') ? `[${device.host}]` : device.host}:{device.check_port}</p>
+                            <MonitorUptime stats={props.localDeviceStats[device.id]} />
                             {device.description && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-400">{device.description}</p>}
                             <div className="mt-2 flex flex-wrap gap-3 text-xs"><span className={device.status === 'online' ? 'text-emerald-400' : device.status === 'offline' ? 'text-rose-400' : 'text-slate-400'}>{device.status.toUpperCase()}</span><span>{device.enabled ? 'Включено' : 'Отключено'}{!location.enabled && ' · Площадка отключена'}</span>{device.status === 'offline' && device.enabled && location.enabled && <span className="text-amber-400">{device.incident_confirmed_at ? 'Сбой подтверждён' : 'Ожидание подтверждения'}</span>}<span className="text-slate-400">Проверка: {device.last_checked_at ? new Date(device.last_checked_at).toLocaleString('ru-RU') : 'ещё не выполнялась'}</span><span className="text-slate-400">Отклик: {device.last_response_ms === null ? '—' : `${device.last_response_ms} ms`}</span></div>
                         </div>

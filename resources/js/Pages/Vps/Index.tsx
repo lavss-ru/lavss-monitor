@@ -1,3 +1,5 @@
+import MonitorUptime from '@/Components/MonitorUptime';
+import { MonitorStatsMap } from '@/types/monitorChecks';
 import React, { useState } from 'react';
 import { Head, router, usePage } from '@inertiajs/react';
 import { Sidebar } from '@/Components/Dashboard/Sidebar';
@@ -22,6 +24,7 @@ import { VpsRecord } from '@/types/vps';
 
 interface VpsIndexProps {
     vpsList: VpsRecord[];
+    vpsStats: MonitorStatsMap;
 }
 
 /* ─── Status badge ─── */
@@ -455,7 +458,7 @@ const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({ vps, onClose })
 };
 
 /* ─── Main Page ─── */
-export default function VpsIndex({ vpsList }: VpsIndexProps) {
+export default function VpsIndex({ vpsList, vpsStats }: VpsIndexProps) {
     const user = usePage().props.auth.user;
     const [mobileOpen, setMobileOpen] = useState(false);
     const [addModalOpen, setAddModalOpen] = useState(false);
@@ -651,6 +654,7 @@ export default function VpsIndex({ vpsList }: VpsIndexProps) {
                                                     )}
                                                 </div>
 
+                                                <MonitorUptime stats={vpsStats[vps.id]} />
                                                 {vps.description && (
                                                     <p className="text-xs text-slate-500 mt-2 leading-relaxed">
                                                         {vps.description}

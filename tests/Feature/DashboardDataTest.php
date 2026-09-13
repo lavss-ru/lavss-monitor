@@ -285,16 +285,16 @@ test('website down and recovery update attention while preserving event history'
     $notifier->shouldNotReceive('sendWebsiteAggregateRecovery');
     $this->actingAs(User::factory()->create());
     $service = app(\App\Services\WebsiteMonitoringService::class);
-    $service->monitor($site);
+    $service->monitor($site, origin: 'scheduled');
     $this->travel(10)->minutes();
-    $service->monitor($site);
+    $service->monitor($site, origin: 'scheduled');
     $this->get('/')->assertInertia(fn ($page) => $page
         ->has('dashboard.attentionItems', 1)
         ->where('dashboard.attentionItems.0.id', 'website-offline-'.$site->id)
         ->has('dashboard.recentEvents', 1)
     );
     $this->travel(1)->minutes();
-    $service->monitor($site);
+    $service->monitor($site, origin: 'scheduled');
     $this->get('/')->assertInertia(fn ($page) => $page
         ->has('dashboard.attentionItems', 0)
         ->has('dashboard.recentEvents', 2)

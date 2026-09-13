@@ -37,6 +37,8 @@ class VpsController extends Controller
 
         return Inertia::render('Vps/Index', [
             'vpsList' => $vpsList->values()->all(),
+            'vpsStats' => fn () => app(\App\Services\MonitorCheckStatisticsService::class)
+                ->forMonitors('vps', $vpsList->pluck('id')->all()),
         ]);
     }
 
@@ -67,7 +69,7 @@ class VpsController extends Controller
      */
     public function check(Vps $vps): RedirectResponse
     {
-        $this->monitoring->monitor($vps);
+        $this->monitoring->monitor($vps, origin: 'manual');
 
         return redirect()->route('vps.index');
     }
@@ -81,7 +83,7 @@ class VpsController extends Controller
         $vpsList = Vps::where('enabled', true)->get();
 
         foreach ($vpsList as $vps) {
-            $this->monitoring->monitor($vps);
+            $this->monitoring->monitor($vps, origin: 'manual_batch');
         }
 
         return redirect()->route('vps.index');

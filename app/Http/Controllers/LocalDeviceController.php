@@ -60,7 +60,7 @@ class LocalDeviceController extends Controller
     public function check(LocalDevice $localDevice)
     {
         try {
-            $this->monitoring->monitor($localDevice, diagnostic: true);
+            $this->monitoring->monitor($localDevice, diagnostic: true, origin: 'manual');
         } catch (\Throwable $error) {
             report($error);
             return back()->withErrors(['check' => 'Не удалось выполнить проверку устройства.']);
@@ -70,7 +70,7 @@ class LocalDeviceController extends Controller
 
     public function checkAll()
     {
-        $result = $this->monitoring->checkAll();
+        $result = $this->monitoring->checkAll(origin: 'manual_batch');
         $response = redirect()->route('local-infrastructure.index');
         return $result['errors'] ? $response->withErrors(['check' => "Ошибки проверок: {$result['errors']}. Остальные устройства проверены."]) : $response;
     }

@@ -10,6 +10,7 @@ class VpsMonitoringService
     public function __construct(
         private VpsHealthCheckService $healthCheck,
         private MaxNotifier $notifier,
+        private MonitorCheckRecorder $history,
     ) {
     }
 
@@ -24,11 +25,17 @@ class VpsMonitoringService
      *   event_created: bool,
      * }
      */
-    public function monitor(Vps $vps): array
+    public function monitor(Vps $vps, string $origin): array
+    {
+        return $this->history->observe('vps', $vps->id, $origin,
+            fn ($check) => $this->performMonitor($vps, $check));
+    }
+
+    private function performMonitor(Vps $vps, \Closure $check): array
     {
         $previousStatus = $vps->status; // captures state before check
 
-        $result = $this->healthCheck->check($vps);
+        $result = $check(fn () => $this->healthCheck->check($vps));
         // After check(), $vps->refresh() not needed — check() calls $vps->update()
         // which updates the model in-place via mass-assignment.
         $vps->refresh();

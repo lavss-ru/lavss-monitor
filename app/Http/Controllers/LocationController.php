@@ -14,8 +14,12 @@ class LocationController extends Controller
 {
     public function index()
     {
+        $locations = Location::with(['devices' => fn ($q) => $q->orderBy('name')])->orderBy('name')->get();
         return Inertia::render('LocalInfrastructure/Index', [
-            'locations' => Location::with(['devices' => fn ($q) => $q->orderBy('name')])->orderBy('name')->get(),
+            'locations' => $locations,
+            // Inertia excludes this closure before evaluation on locations-only polling.
+            'localDeviceStats' => fn () => app(\App\Services\MonitorCheckStatisticsService::class)
+                ->forMonitors('local_device', $locations->flatMap->devices->pluck('id')->all()),
             'connectionTypes' => Location::CONNECTION_TYPES,
             'deviceTypes' => LocalDevice::TYPES,
         ]);

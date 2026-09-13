@@ -170,15 +170,15 @@ test('per device throwable does not stop batch and clears unconfirmed continuity
 test('MAX failure for one device does not prevent another device from being checked', function () {
     localHttpFake(['https://max.invalid/*' => Http::response([], 500)]);
     $a = localDevice(); $b = localDevice();
-    app(LocalDeviceMonitoringService::class)->checkAll(); $this->travel(2)->minutes();
-    expect(app(LocalDeviceMonitoringService::class)->checkAll())->toBe(['checked' => 2, 'errors' => 0]);
+    app(LocalDeviceMonitoringService::class)->checkAll(origin: 'scheduled'); $this->travel(2)->minutes();
+    expect(app(LocalDeviceMonitoringService::class)->checkAll(origin: 'scheduled'))->toBe(['checked' => 2, 'errors' => 0]);
     expect(Event::count())->toBe(2)->and($a->fresh()->incident_confirmed_at)->not->toBeNull()
         ->and($b->fresh()->incident_confirmed_at)->not->toBeNull();
 });
 
 test('stale selected model cannot monitor a device disabled after selection', function () {
     $device = localDevice(); LocalDevice::whereKey($device->id)->update(['enabled' => false]);
-    expect(app(LocalDeviceMonitoringService::class)->monitor($device)['skipped'])->toBeTrue();
+    expect(app(LocalDeviceMonitoringService::class)->monitor($device, origin: 'scheduled')['skipped'])->toBeTrue();
     expect($device->fresh()->last_checked_at)->toBeNull();
 });
 

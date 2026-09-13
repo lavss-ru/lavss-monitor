@@ -19,7 +19,7 @@ test('website monitoring propagates programming errors', function () {
     $notifier = $this->mock(MaxNotifier::class);
     $notifier->shouldNotReceive('sendWebsiteAggregate');
     $notifier->shouldNotReceive('sendWebsiteAggregateRecovery');
-    expect(fn () => app(WebsiteMonitoringService::class)->monitor($site))->toThrow(LogicException::class);
+    expect(fn () => app(WebsiteMonitoringService::class)->monitor($site, origin: 'scheduled'))->toThrow(LogicException::class);
     expect(Event::count())->toBe(0)->and($site->fresh()->status)->toBe('unknown');
 });
 

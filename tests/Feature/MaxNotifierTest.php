@@ -41,7 +41,7 @@ function maxMockCheck(string $returnStatus, int $responseMs = 10): void
  */
 function serviceWithNotifier(MaxNotifier $notifier): VpsMonitoringService
 {
-    return new VpsMonitoringService(app(VpsHealthCheckService::class), $notifier);
+    return new VpsMonitoringService(app(VpsHealthCheckService::class), $notifier, app(\App\Services\MonitorCheckRecorder::class));
 }
 
 /**
@@ -69,7 +69,7 @@ test('A: online to offline calls MaxNotifier sendDown once', function () {
 
     maxMockCheck('offline');
 
-    $result = app(VpsMonitoringService::class)->monitor($vps);
+    $result = app(VpsMonitoringService::class)->monitor($vps, origin: 'scheduled');
 
     expect($result['event_created'])->toBeTrue();
     expect(Event::count())->toBe(1);
@@ -87,7 +87,7 @@ test('B: unknown to offline calls MaxNotifier sendDown once', function () {
 
     maxMockCheck('offline');
 
-    $result = app(VpsMonitoringService::class)->monitor($vps);
+    $result = app(VpsMonitoringService::class)->monitor($vps, origin: 'scheduled');
 
     expect($result['event_created'])->toBeTrue();
     expect(Event::count())->toBe(1);
@@ -104,7 +104,7 @@ test('C: offline to offline calls MaxNotifier never', function () {
 
     maxMockCheck('offline');
 
-    $result = app(VpsMonitoringService::class)->monitor($vps);
+    $result = app(VpsMonitoringService::class)->monitor($vps, origin: 'scheduled');
 
     expect($result['event_created'])->toBeFalse();
     expect(Event::count())->toBe(0);
@@ -121,7 +121,7 @@ test('D: offline to online calls MaxNotifier sendRecovery once', function () {
 
     maxMockCheck('online', 14);
 
-    $result = app(VpsMonitoringService::class)->monitor($vps);
+    $result = app(VpsMonitoringService::class)->monitor($vps, origin: 'scheduled');
 
     expect($result['event_created'])->toBeTrue();
     expect(Event::first()->severity)->toBe('info');
@@ -138,7 +138,7 @@ test('E: online to online calls MaxNotifier never', function () {
 
     maxMockCheck('online');
 
-    $result = app(VpsMonitoringService::class)->monitor($vps);
+    $result = app(VpsMonitoringService::class)->monitor($vps, origin: 'scheduled');
 
     expect($result['event_created'])->toBeFalse();
 });
@@ -154,7 +154,7 @@ test('F: unknown to online calls MaxNotifier never', function () {
 
     maxMockCheck('online');
 
-    $result = app(VpsMonitoringService::class)->monitor($vps);
+    $result = app(VpsMonitoringService::class)->monitor($vps, origin: 'scheduled');
 
     expect($result['event_created'])->toBeFalse();
 });
@@ -181,7 +181,7 @@ test('G: full monitoring with MAX API 500 still creates event successfully', fun
     maxMockCheck('offline');
 
     $service = serviceWithNotifier(fakeConfiguredNotifier());
-    $result  = $service->monitor($vps);
+    $result  = $service->monitor($vps, origin: 'scheduled');
 
     expect($vps->fresh()->status)->toBe('offline');
     expect($result['event_created'])->toBeTrue();
@@ -215,7 +215,7 @@ test('H: full monitoring with MAX connection exception still creates event', fun
     maxMockCheck('offline');
 
     $service = serviceWithNotifier(fakeConfiguredNotifier());
-    $result  = $service->monitor($vps);
+    $result  = $service->monitor($vps, origin: 'scheduled');
 
     expect($vps->fresh()->status)->toBe('offline');
     expect($result['event_created'])->toBeTrue();

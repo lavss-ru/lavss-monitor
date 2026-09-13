@@ -10,22 +10,28 @@ use Throwable;
 
 class LocalDeviceMonitoringService
 {
-    public function __construct(private LocalDeviceHealthCheckService $healthCheck, private MaxNotifier $notifier) {}
+    public function __construct(private LocalDeviceHealthCheckService $healthCheck, private MaxNotifier $notifier, private MonitorCheckRecorder $history) {}
 
     /**
      * Serialize checks and edits per device. Persist factual state before attempting MAX.
      * Batch callers recheck effective enabled state here, avoiding stale batch selections.
      */
-    public function monitor(LocalDevice $device, bool $diagnostic = false): array
+    public function monitor(LocalDevice $device, string $origin, bool $diagnostic = false): array
     {
-        $outcome = DB::transaction(function () use ($device, $diagnostic) {
+        return $this->history->observe('local_device', $device->id, $origin,
+            fn ($check) => $this->performMonitor($device, $diagnostic, $check));
+    }
+
+    private function performMonitor(LocalDevice $device, bool $diagnostic, \Closure $check): array
+    {
+        $outcome = DB::transaction(function () use ($device, $diagnostic, $check) {
             $device = LocalDevice::whereKey($device->id)->lockForUpdate()->firstOrFail();
             $enabled = $device->enabled && $device->location->enabled;
             if (! $enabled && ! $diagnostic) {
                 return ['status' => $device->status, 'event_created' => false, 'skipped' => true];
             }
             try {
-                $result = $this->healthCheck->check($device);
+                $result = $check(fn () => $this->healthCheck->check($device));
             } catch (Throwable $error) {
                 // An unmeasured interval must not confirm a continuous TCP failure.
                 $device->update(['status' => 'unknown', 'last_checked_at' => null, 'last_response_ms' => null,
@@ -101,12 +107,12 @@ class LocalDeviceMonitoringService
         }
     }
 
-    public function checkAll(): array
+    public function checkAll(string $origin): array
     {
         $checked = $errors = 0;
         foreach (LocalDevice::monitored()->orderBy('id')->get() as $device) {
             try {
-                $result = $this->monitor($device);
+                $result = $this->monitor($device, origin: $origin);
                 $checked += $result['skipped'] ? 0 : 1;
             } catch (Throwable $error) {
                 report($error);

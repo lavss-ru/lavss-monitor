@@ -36,7 +36,7 @@ function localFakeCheck(string $status): void
 function localMonitor(LocalDevice $device, bool $diagnostic = false): array
 {
     // Recreate service and reload model on every call to exercise process boundaries.
-    return app(LocalDeviceMonitoringService::class)->monitor($device->fresh(), $diagnostic);
+    return app(LocalDeviceMonitoringService::class)->monitor($device->fresh(), origin: $diagnostic ? 'manual' : 'scheduled', diagnostic: $diagnostic);
 }
 
 function localHttpFake(array $responses): void
