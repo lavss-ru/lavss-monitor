@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Event;
 use App\Models\LocalDevice;
+use App\Models\Location;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
@@ -28,7 +29,14 @@ class LocalDeviceMonitoringService
     {
         $outcome = DB::transaction(function () use ($device, $diagnostic, $check, $policy) {
             $device = LocalDevice::whereKey($device->id)->lockForUpdate()->firstOrFail();
+            $device->setRelation('location', Location::whereKey($device->location_id)->sharedLock()->firstOrFail());
             $enabled = $device->enabled && $device->location->enabled;
+            if ($device->location->blocksChildren()) {
+                $device->update(['status' => 'unknown', 'last_response_ms' => null,
+                    'failure_started_at' => $device->incident_confirmed_at ? $device->failure_started_at : null]);
+
+                return ['status' => 'unknown', 'event_created' => false, 'skipped' => true, 'location_unavailable' => true];
+            }
             if (! $enabled && ! $diagnostic) {
                 return ['status' => $device->status, 'event_created' => false, 'skipped' => true];
             }
@@ -42,7 +50,12 @@ class LocalDeviceMonitoringService
                 return $error;
             }
             $down = $recovery = false;
-            if ($enabled) {
+            if ($enabled && $device->location->monitored() && $device->location->status !== 'online'
+                && $device->incident_confirmed_at === null) {
+                // Do not carry an unconfirmed child interval through parent grace.
+                $device->update(['failure_started_at' => null]);
+            }
+            if ($enabled && (! $device->location->monitored() || $device->location->status === 'online')) {
                 if ($device->status === 'offline') {
                     // Never publish an obsolete recovery while the target is down again.
                     $device->recovery_pending_at = null;
@@ -95,7 +108,11 @@ class LocalDeviceMonitoringService
             // No transaction retry: external delivery cannot be rolled back.
             DB::transaction(function () use ($id, $policy) {
                 $device = LocalDevice::whereKey($id)->lockForUpdate()->first();
-                if (! $device || ! $device->enabled || ! $device->location->enabled) {
+                if ($device) {
+                    $device->setRelation('location', Location::whereKey($device->location_id)->sharedLock()->firstOrFail());
+                }
+                if (! $device || ! $device->enabled || ! $device->location->enabled
+                    || ($device->location->monitored() && $device->location->status !== 'online')) {
                     return;
                 }
                 if ($device->status === 'offline' && $device->incident_confirmed_at !== null && $device->incident_notified_at === null) {
@@ -118,6 +135,15 @@ class LocalDeviceMonitoringService
     {
         $policy = NotificationPolicyService::load();
         $checked = $errors = 0;
+        foreach (Location::where('enabled', true)->where('monitoring_enabled', true)->orderBy('id')->get() as $location) {
+            try {
+                $result = app(LocationMonitoringService::class)->monitor($location, origin: $origin, policy: $policy);
+                $checked += $result['skipped'] ? 0 : 1;
+            } catch (Throwable $error) {
+                report($error);
+                $errors++;
+            }
+        }
         foreach (LocalDevice::monitored()->orderBy('id')->get() as $device) {
             try {
                 $result = $this->monitor($device, origin: $origin, policy: $policy);

@@ -42,9 +42,20 @@ class LocalDevice extends Model
         $query->where('enabled', true)->whereHas('location', fn (Builder $q) => $q->where('enabled', true));
     }
 
+    public function applyLocationAvailability(): void
+    {
+        $blocked = $this->location->blocksChildren();
+        $this->setAttribute('location_unavailable', $blocked);
+        if ($blocked) {
+            $this->setAttribute('status', 'unknown');
+            $this->setAttribute('last_response_ms', null);
+        }
+    }
+
     public function endpoint(): string
     {
         $host = filter_var($this->host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) ? "[{$this->host}]" : $this->host;
+
         return "{$host}:{$this->check_port}";
     }
 

@@ -8,6 +8,8 @@ use App\Models\Vps;
 use App\Models\Website;
 use App\Services\LocalDeviceHealthCheckService;
 use App\Services\LocalDeviceMonitoringService;
+use App\Services\LocationHealthCheckService;
+use App\Services\LocationMonitoringService;
 use App\Services\NotificationPolicyService as Policy;
 use App\Services\VpsHealthCheckService;
 use App\Services\VpsMonitoringService;
@@ -35,7 +37,7 @@ beforeEach(function () {
 
         return Http::response($this->body, $this->delivery);
     });
-    foreach ([VpsHealthCheckService::class, WebsiteHealthCheckService::class, LocalDeviceHealthCheckService::class] as $class) {
+    foreach ([LocationHealthCheckService::class, VpsHealthCheckService::class, WebsiteHealthCheckService::class, LocalDeviceHealthCheckService::class] as $class) {
         $this->mock($class)->shouldReceive('check')->andReturnUsing(function ($model) {
             $result = ['status' => $this->health, 'response_ms' => 7, 'http_status' => $this->health === 'online' ? 200 : 500];
             $model->update(['status' => $this->health, 'last_checked_at' => now(), 'last_response_ms' => 7]);
@@ -48,12 +50,14 @@ beforeEach(function () {
 function policyTarget(string $type): array
 {
     $model = match ($type) {
+        'location' => Location::create(['name' => 'Location', 'connection_type' => 'local', 'enabled' => true, 'monitoring_enabled' => true, 'probe_host' => '192.0.2.3', 'probe_port' => 22]),
         'vps' => Vps::create(['name' => 'VPS', 'ip_address' => '192.0.2.1', 'check_port' => 22, 'enabled' => true]),
         'website' => Website::create(['name' => 'Site', 'url' => 'https://target.invalid', 'enabled' => true]),
         'local_device' => LocalDevice::create(['name' => 'Device', 'host' => '192.0.2.2', 'check_port' => 22, 'type' => 'linux_server', 'enabled' => true,
             'location_id' => Location::create(['name' => 'Location', 'connection_type' => 'local', 'enabled' => true])->id]),
     };
     $service = app(match ($type) {
+        'location' => LocationMonitoringService::class,
         'vps' => VpsMonitoringService::class, 'website' => WebsiteMonitoringService::class, 'local_device' => LocalDeviceMonitoringService::class
     });
     // Deliberately retain the same service object across cycles (schedule:work).
@@ -101,7 +105,7 @@ test('all monitor types confirm at custom exact boundaries and preserve history'
     $cycle();
     Http::assertSentCount(2);
     expect(Event::count())->toBe(2)->and(DB::table('monitor_checks')->count())->toBe($delay > 0 ? 6 : 4);
-})->with(['vps', 'website', 'local_device'])->with([0, 1, 37, 86400]);
+})->with(['vps', 'website', 'local_device', 'location'])->with([0, 1, 37, 86400]);
 
 test('quiet transient incident has events history but no stale red or orphan green', function (string $type) {
     policyDelay($type, 0);
@@ -116,7 +120,7 @@ test('quiet transient incident has events history but no stale red or orphan gre
     $cycle();
     Http::assertNothingSent();
     expect(Event::count())->toBe(2)->and(DB::table('monitor_checks')->count())->toBe(3);
-})->with(['vps', 'website', 'local_device']);
+})->with(['vps', 'website', 'local_device', 'location']);
 
 test('persistent quiet DOWN delivers once after quiet and recovery remains correlated', function (string $type) {
     policyDelay($type, 0);
@@ -133,7 +137,7 @@ test('persistent quiet DOWN delivers once after quiet and recovery remains corre
     $cycle();
     Http::assertSentCount(2);
     expect(Event::count())->toBe(2);
-})->with(['vps', 'website', 'local_device']);
+})->with(['vps', 'website', 'local_device', 'location']);
 
 test('recovery during quiet after delivered DOWN defers then sends once', function (string $type) {
     policyDelay($type, 0);
@@ -150,7 +154,7 @@ test('recovery during quiet after delivered DOWN defers then sends once', functi
     $cycle();
     Http::assertSentCount(2);
     Http::assertSent(fn ($r) => str_contains($r['text'], '🟢'));
-})->with(['vps', 'website', 'local_device']);
+})->with(['vps', 'website', 'local_device', 'location']);
 
 test('disabled policy keeps events and history and picks live update on same service', function (string $type, string $switch) {
     policyDelay($type, 0);
@@ -175,7 +179,7 @@ test('disabled policy keeps events and history and picks live update on same ser
     $this->health = 'online';
     $cycle();
     Http::assertSentCount(2);
-})->with(['vps', 'website', 'local_device'])->with(['notifications_enabled', 'max_enabled', 'down_enabled']);
+})->with(['vps', 'website', 'local_device', 'location'])->with(['notifications_enabled', 'max_enabled', 'down_enabled']);
 
 test('suppressed recovery is terminal even if enabled later', function (string $type) {
     policyDelay($type, 0);
@@ -188,7 +192,7 @@ test('suppressed recovery is terminal even if enabled later', function (string $
     $cycle();
     Http::assertSentCount(1);
     expect(Event::count())->toBe(2)->and(DB::table('monitor_checks')->count())->toBe(3);
-})->with(['vps', 'website', 'local_device']);
+})->with(['vps', 'website', 'local_device', 'location']);
 
 test('transport failures retry once per cycle without duplicate DOWN or Recovery', function (string $type, string $failure) {
     policyDelay($type, 0);
@@ -220,7 +224,7 @@ test('transport failures retry once per cycle without duplicate DOWN or Recovery
     $count = count(Http::recorded());
     $cycle();
     expect(count(Http::recorded()))->toBe($count)->and(Event::count())->toBe(2);
-})->with(['vps', 'website', 'local_device'])->with(['http', 'application', 'exception']);
+})->with(['vps', 'website', 'local_device', 'location'])->with(['http', 'application', 'exception']);
 
 test('failed DOWN followed by recovery never sends orphan green', function (string $type) {
     policyDelay($type, 0);
@@ -233,7 +237,7 @@ test('failed DOWN followed by recovery never sends orphan green', function (stri
     $cycle();
     Http::assertSentCount(1);
     expect(Event::count())->toBe(2);
-})->with(['vps', 'website', 'local_device']);
+})->with(['vps', 'website', 'local_device', 'location']);
 
 test('live delay change confirms an existing pending incident next cycle', function (string $type) {
     policyDelay($type, 600);
@@ -244,7 +248,7 @@ test('live delay change confirms an existing pending incident next cycle', funct
     $cycle();
     Http::assertSentCount(1);
     expect(Event::count())->toBe(1);
-})->with(['vps', 'website', 'local_device']);
+})->with(['vps', 'website', 'local_device', 'location']);
 
 test('MAX recipient override and fallback reach transport without changing auth', function (mixed $recipient, string $expected) {
     DB::table('notification_settings')->where('id', 1)->update(['max_recipient_id' => $recipient]);
@@ -265,7 +269,7 @@ test('transient incidents during disabled policy never replay after enabling', f
     $cycle();
     Http::assertNothingSent();
     expect(Event::count())->toBe(2)->and(DB::table('monitor_checks')->pluck('status')->all())->toBe(['offline', 'online', 'online']);
-})->with(['vps', 'website', 'local_device'])->with(['notifications_enabled', 'max_enabled', 'down_enabled']);
+})->with(['vps', 'website', 'local_device', 'location'])->with(['notifications_enabled', 'max_enabled', 'down_enabled']);
 
 test('global and MAX toggle defer correlated recovery without losing history', function (string $type, string $switch) {
     policyDelay($type, 0);
@@ -280,7 +284,7 @@ test('global and MAX toggle defer correlated recovery without losing history', f
     $cycle();
     Http::assertSentCount(2);
     expect(Event::count())->toBe(2)->and(DB::table('monitor_checks')->count())->toBe(4);
-})->with(['vps', 'website', 'local_device'])->with(['notifications_enabled', 'max_enabled']);
+})->with(['vps', 'website', 'local_device', 'location'])->with(['notifications_enabled', 'max_enabled']);
 
 test('quiet recovery cannot send green while target is down again', function (string $type) {
     policyDelay($type, 0);
@@ -297,7 +301,7 @@ test('quiet recovery cannot send green while target is down again', function (st
     $this->health = 'online';
     $cycle();
     Http::assertSent(fn ($r) => str_contains($r['text'], '🟢'));
-})->with(['vps', 'website', 'local_device']);
+})->with(['vps', 'website', 'local_device', 'location']);
 
 test('default confirmation boundaries remain 0 600 120', function (string $type) {
     [$model, $cycle] = policyTarget($type);
@@ -312,7 +316,7 @@ test('default confirmation boundaries remain 0 600 120', function (string $type)
     }
     Http::assertSentCount(1);
     expect(Event::count())->toBe(1);
-})->with(['vps', 'website', 'local_device']);
+})->with(['vps', 'website', 'local_device', 'location']);
 
 test('website quiet aggregate publishes only latest membership and preserves grace semantics', function () {
     policyDelay('website', 0);

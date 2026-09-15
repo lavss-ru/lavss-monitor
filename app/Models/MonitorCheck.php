@@ -7,8 +7,10 @@ use Illuminate\Database\Eloquent\Model;
 /** Append-only check samples; deleted monitors intentionally have no cascading relation. */
 class MonitorCheck extends Model
 {
-    public const TYPES = ['vps', 'website', 'local_device'];
+    public const TYPES = ['vps', 'website', 'local_device', 'location'];
+
     public const ORIGINS = ['scheduled', 'manual', 'manual_batch'];
+
     public const STATUSES = ['online', 'offline', 'unknown'];
 
     public $timestamps = false;

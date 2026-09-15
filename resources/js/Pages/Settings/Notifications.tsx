@@ -3,14 +3,14 @@ import { Head, useForm, usePage } from '@inertiajs/react';
 import { Sidebar } from '@/Components/Dashboard/Sidebar';
 import { Header } from '@/Components/Dashboard/Header';
 
-type MonitorType = 'vps' | 'website' | 'local_device';
+type MonitorType = 'vps' | 'website' | 'local_device' | 'location';
 type Rule = { down_enabled: boolean; recovery_enabled: boolean; confirmation_seconds: number };
 type Settings = { notifications_enabled: boolean; max_enabled: boolean; max_recipient_id: string;
     timezone: string; quiet_hours_enabled: boolean; quiet_hours_start: string; quiet_hours_end: string };
 type Props = { settings: Settings; rules: Record<MonitorType, Rule>; maxStatus: string;
     effectiveRecipient: string | null; timezones: string[] };
 const input = 'mt-1 block w-full rounded-lg border-slate-700 bg-slate-950 text-slate-100';
-const sections: [MonitorType, string][] = [['vps', 'Правила VPS'], ['website', 'Правила сайтов'], ['local_device', 'Правила локальной инфраструктуры']];
+const sections: [MonitorType, string][] = [['vps', 'Правила VPS'], ['website', 'Правила сайтов'], ['local_device', 'Правила устройств'], ['location', 'Правила площадок']];
 
 export default function Notifications({ settings, rules, maxStatus, effectiveRecipient, timezones }: Props) {
     const [mobileOpen, setMobileOpen] = useState(false);

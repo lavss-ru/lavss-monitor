@@ -1,21 +1,25 @@
 <?php
 
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\LocalDeviceController;
+use App\Http\Controllers\LocationController;
+use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\VpsController;
 use App\Http\Controllers\WebsiteController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth'])->group(function () {
-    Route::get('/settings/notifications', [\App\Http\Controllers\NotificationSettingsController::class, 'edit'])->name('settings.notifications');
-    Route::put('/settings/notifications', [\App\Http\Controllers\NotificationSettingsController::class, 'update'])->name('settings.notifications.update');
+    Route::get('/settings/notifications', [NotificationSettingsController::class, 'edit'])->name('settings.notifications');
+    Route::put('/settings/notifications', [NotificationSettingsController::class, 'update'])->name('settings.notifications.update');
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
-    Route::get('/local-infrastructure', [\App\Http\Controllers\LocationController::class, 'index'])->name('local-infrastructure.index');
-    Route::resource('locations', \App\Http\Controllers\LocationController::class)->only(['index', 'store', 'update', 'destroy']);
-    Route::post('/local-devices/check-all', [\App\Http\Controllers\LocalDeviceController::class, 'checkAll'])->name('local-devices.check-all');
-    Route::post('/local-devices/{localDevice}/check', [\App\Http\Controllers\LocalDeviceController::class, 'check'])->name('local-devices.check');
-    Route::resource('local-devices', \App\Http\Controllers\LocalDeviceController::class)
+    Route::get('/local-infrastructure', [LocationController::class, 'index'])->name('local-infrastructure.index');
+    Route::post('/locations/{location}/check', [LocationController::class, 'check'])->name('locations.check');
+    Route::resource('locations', LocationController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::post('/local-devices/check-all', [LocalDeviceController::class, 'checkAll'])->name('local-devices.check-all');
+    Route::post('/local-devices/{localDevice}/check', [LocalDeviceController::class, 'check'])->name('local-devices.check');
+    Route::resource('local-devices', LocalDeviceController::class)
         ->only(['store', 'update', 'destroy'])->parameters(['local-devices' => 'localDevice']);
 
     // VPS / Servers

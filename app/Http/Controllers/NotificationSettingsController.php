@@ -40,7 +40,7 @@ class NotificationSettingsController extends Controller
             'quiet_hours_enabled' => ['required', 'boolean'],
             'quiet_hours_start' => ['nullable', Rule::requiredIf($request->boolean('quiet_hours_enabled')), 'date_format:H:i'],
             'quiet_hours_end' => ['nullable', Rule::requiredIf($request->boolean('quiet_hours_enabled')), 'date_format:H:i'],
-            'rules' => ['required', 'array:vps,website,local_device'],
+            'rules' => ['required', 'array:vps,website,local_device,location'],
         ];
         if ($request->boolean('quiet_hours_enabled')) {
             $validation['quiet_hours_end'][] = 'different:quiet_hours_start';

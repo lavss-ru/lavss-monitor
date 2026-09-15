@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\LocalDevice;
+use App\Models\Location;
 use App\Models\Vps;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
@@ -97,6 +98,24 @@ class MaxNotifier
         ]);
 
         return $policy->decision('local_device', $recovery) === 'deliver' && $this->send($text, $device->name, $recovery ? 'recovery' : 'down', 'local_device', $policy);
+    }
+
+    public function sendLocation(Location $location, bool $recovery, ?NotificationPolicyService $policy = null): bool
+    {
+        $policy ??= NotificationPolicyService::load();
+        if (! $policy->maxConfigured()) {
+            return false;
+        }
+        $text = implode("\n", [
+            $recovery ? '🟢 Площадка снова доступна' : '🔴 Площадка недоступна',
+            '', "Площадка: {$location->name}",
+            'Подключение: '.($location->connection_type === 'wireguard' ? 'WireGuard' : $location->connection_type),
+            "Контроль: {$location->endpoint()}",
+            'Время: '.($recovery ? $location->recovery_pending_at : $location->incident_confirmed_at)->copy()->setTimezone($policy->timezone())->format('d.m.Y H:i:s T'),
+        ]);
+
+        return $policy->decision('location', $recovery) === 'deliver'
+            && $this->send($text, $location->name, $recovery ? 'recovery' : 'down', 'location', $policy);
     }
 
     /**

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\LocalDevice;
 use App\Rules\TcpHost;
 use App\Services\LocalDeviceMonitoringService;
+use App\Services\LocationMonitoringService;
+use App\Services\NotificationPolicyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -29,6 +31,7 @@ class LocalDeviceController extends Controller
     public function store(Request $request)
     {
         LocalDevice::create($this->validated($request));
+
         return redirect()->route('local-infrastructure.index');
     }
 
@@ -44,6 +47,7 @@ class LocalDeviceController extends Controller
             }
             $device->update($data);
         });
+
         return redirect()->route('local-infrastructure.index');
     }
 
@@ -54,17 +58,22 @@ class LocalDeviceController extends Controller
             $device->resolveWarnings();
             $device->delete();
         });
+
         return redirect()->route('local-infrastructure.index');
     }
 
     public function check(LocalDevice $localDevice)
     {
         try {
-            $this->monitoring->monitor($localDevice, diagnostic: true, origin: 'manual');
+            $policy = NotificationPolicyService::load();
+            app(LocationMonitoringService::class)->monitor($localDevice->location, origin: 'manual', policy: $policy);
+            $this->monitoring->monitor($localDevice, diagnostic: true, origin: 'manual', policy: $policy);
         } catch (\Throwable $error) {
             report($error);
+
             return back()->withErrors(['check' => 'Не удалось выполнить проверку устройства.']);
         }
+
         return redirect()->route('local-infrastructure.index');
     }
 
@@ -72,6 +81,7 @@ class LocalDeviceController extends Controller
     {
         $result = $this->monitoring->checkAll(origin: 'manual_batch');
         $response = redirect()->route('local-infrastructure.index');
+
         return $result['errors'] ? $response->withErrors(['check' => "Ошибки проверок: {$result['errors']}. Остальные устройства проверены."]) : $response;
     }
 }

@@ -6,7 +6,8 @@
 * **Stage 3.4.1 — Local Infrastructure live polling:** завершён, задеплоен и проверен (`0dbaf2a`).
 * **Stage 3.5 — unified check history + uptime/statistics:** подготовлен для review: общая история, 30-day retention и sample-based uptime 24h/7d/30d для Website, VPS и LocalDevice. Без production migration/deploy; см. [описание](docs/stage-3.5-check-history.md).
 * **Stage 3.6 — Monitoring & Notification Settings:** подготовлен для review: MAX-only policy, quiet hours/timezone, правила и задержки подтверждения, русский Settings UI; изменения со следующего цикла без restart. Без production migration/deploy; см. [описание](docs/stage-3.6-monitoring-settings.md).
-* **Позже:** detail pages/graphs, Location/gateway correlation, Proxmox API monitoring.
+* **Stage 3.7 — Location connectivity / WireGuard awareness:** подготовлен для review: TCP состояние площадки, подавление дочерних инцидентов, read-only WG diagnostics, history/uptime и location notification rule. Без production migration/deploy; см. [описание](docs/stage-3.7-location-connectivity.md).
+* **Позже:** detail pages/graphs, Proxmox API monitoring.
 
 Ниже сохранён первоначальный roadmap Alpha. Ограничения Windows/сетевых устройств относятся к специализированным метрикам: TCP доступность этих типов входит в Stage 3.4.
 
