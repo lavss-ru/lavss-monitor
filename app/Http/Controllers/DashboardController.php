@@ -155,9 +155,12 @@ class DashboardController extends Controller
         $wordpressCount = $websiteCollection->where('type', 'wordpress')->count();
         $infrastructureCount = $infrastructureCollection->count();
 
-        $pveCount = $infrastructureCollection->where('type', 'proxmox')->count();
-        $serverCount = $infrastructureCollection->where('type', 'server')->count();
-        $lxcCount = $infrastructureCollection->where('type', 'lxc')->count();
+        $proxmox = app(\App\Services\ProxmoxSummaryService::class)->summary();
+        $pveCount = $proxmox['nodes'];
+        $vmCount = $proxmox['vm']['total'];
+        $vmRunning = $proxmox['vm']['running'];
+        $lxcCount = $proxmox['lxc']['total'];
+        $lxcRunning = $proxmox['lxc']['running'];
 
         $activeWarningsCount = $offlineVps->count() + $offlineWebsites->count() + $infrastructureActiveEvents->count();
         $webWarningCount = $offlineWebsites->count();
@@ -189,6 +192,7 @@ class DashboardController extends Controller
             : 'Все объекты и сервисы находятся в рабочем состоянии.';
 
         $dashboardData = [
+            'proxmox' => $proxmox,
             'localDevices' => $localDeviceSummary,
             'locations' => $locationSummary,
             'overallStatus' => $overallStatus,
@@ -213,7 +217,7 @@ class DashboardController extends Controller
                 'infrastructure' => [
                     'count' => $locationSummary['total'] + $infrastructureCount,
                     'label' => 'Инфраструктура',
-                    'sub' => "Площадки: {$locationSummary['online']} online, {$locationSummary['offline']} offline, {$locationSummary['unknown']} unknown · Устройств: {$localDeviceSummary['total']} · {$pveCount} PVE, {$serverCount} Сервера, {$lxcCount} LXC",
+                    'sub' => "Площадки: {$locationSummary['online']} online, {$locationSummary['offline']} offline, {$locationSummary['unknown']} unknown · Устройств: {$localDeviceSummary['total']} · {$pveCount} PVE · VM: {$vmRunning}/{$vmCount} running · LXC: {$lxcRunning}/{$lxcCount} running",
                 ],
             ],
             'attentionItems' => $attentionItems->values()->all(),

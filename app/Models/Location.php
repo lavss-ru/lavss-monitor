@@ -61,4 +61,9 @@ class Location extends Model
     {
         return $this->hasMany(LocalDevice::class);
     }
+
+    public function proxmoxConnections(): HasMany
+    {
+        return $this->hasMany(ProxmoxConnection::class);
+    }
 }

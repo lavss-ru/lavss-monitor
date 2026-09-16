@@ -51,6 +51,7 @@ export interface InfrastructureItem {
 }
 
 export interface DashboardData {
+    proxmox: { connections: number; nodes: number; vm: { total: number; running: number; stopped: number }; lxc: { total: number; running: number; stopped: number } };
     locations: { total: number; online: number; offline: number; unknown: number };
     localDevices: { total: number; online: number; offline: number; unknown: number };
     overallStatus: 'ok' | 'warning' | 'critical';

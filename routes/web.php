@@ -9,6 +9,9 @@ use App\Http\Controllers\WebsiteController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth'])->group(function () {
+    Route::resource('proxmox', \App\Http\Controllers\ProxmoxController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::post('/proxmox/{proxmox}/test', [\App\Http\Controllers\ProxmoxController::class, 'test'])->name('proxmox.test');
+    Route::post('/proxmox/{proxmox}/sync', [\App\Http\Controllers\ProxmoxController::class, 'sync'])->name('proxmox.sync');
     Route::get('/settings/notifications', [NotificationSettingsController::class, 'edit'])->name('settings.notifications');
     Route::put('/settings/notifications', [NotificationSettingsController::class, 'update'])->name('settings.notifications.update');
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');

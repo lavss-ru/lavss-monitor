@@ -21,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withSchedule(function (Schedule $schedule): void {
+        $schedule->command('monitor:proxmox')->everyMinute()->withoutOverlapping(10);
         $schedule->command('monitor:prune-check-history')
             ->dailyAt('03:15')
             ->withoutOverlapping(120);
@@ -38,6 +39,7 @@ return Application::configure(basePath: dirname(__DIR__))
             ->withoutOverlapping(10);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->dontFlash(['api_token_secret']);
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

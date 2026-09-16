@@ -109,8 +109,8 @@ class LocationController extends Controller
     {
         DB::transaction(function () use ($location) {
             $location = Location::whereKey($location->id)->lockForUpdate()->firstOrFail();
-            if ($location->devices()->exists()) {
-                throw ValidationException::withMessages(['location' => 'Сначала удалите или перенесите устройства этой площадки.']);
+            if ($location->devices()->exists() || $location->proxmoxConnections()->exists()) {
+                throw ValidationException::withMessages(['location' => 'Сначала удалите или перенесите устройства и подключения Proxmox этой площадки.']);
             }
             $location->resolveWarnings();
             $location->delete();

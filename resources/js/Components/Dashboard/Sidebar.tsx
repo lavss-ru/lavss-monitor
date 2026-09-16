@@ -5,7 +5,6 @@ import {
     Server,
     Globe,
     Cpu,
-    Box,
     FileCode,
     Activity,
     Settings,
@@ -35,8 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen, onA
         },
         { name: 'Сайты', href: '/websites', icon: Globe, count: websiteCount ?? 0, active: url.startsWith('/websites') },
         { name: 'Локальная инфраструктура', href: '/local-infrastructure', icon: Server, active: url.startsWith('/local-infrastructure') || url.startsWith('/locations') },
-        { name: 'Proxmox', href: '#proxmox', icon: Cpu, count: 2 },
-        { name: 'Контейнеры', href: '#containers', icon: Box, count: 2 },
+        { name: 'Proxmox', href: '/proxmox', icon: Cpu, active: url.startsWith('/proxmox') },
         { name: 'WordPress', href: '#wordpress', icon: FileCode, count: 15 },
         { name: 'События', href: '#events', icon: Activity },
         { name: 'Настройки', href: '/settings/notifications', icon: Settings, active: url.startsWith('/settings') },
@@ -111,9 +109,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen, onA
             <div className="pt-4 border-t border-slate-800 px-2 text-xs text-slate-500 flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                     <Shield className="w-4 h-4 text-emerald-400" />
-                    <span>PVE Home Node</span>
+                    <span>lavss monitor</span>
                 </div>
-                <span className="font-mono text-emerald-400">WireGuard OK</span>
             </div>
         </div>
     );
