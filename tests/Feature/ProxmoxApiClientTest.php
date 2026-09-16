@@ -69,7 +69,7 @@ test('proxmox rejects malformed inventory rows', function (string $field, mixed 
     $rows[2][$field] = $value;
     pveFake($rows);
     expect(fn () => app(ProxmoxApiClient::class)->inventory(pveConnection()))->toThrow(ProxmoxApiException::class);
-})->with([['vmid', true], ['vmid', null], ['vmid', -1], ['vmid', 2.5], ['type', null], ['type', 'unexpected'],
+})->with([['vmid', true], ['vmid', null], ['vmid', -1], ['vmid', 2.5], ['type', null], ['type', ''],
     ['node', 'absent'], ['node', null], ['status', null], ['cpu', 'bad'], ['cpu', -0.1], ['cpu', 1.1],
     ['mem', -1], ['maxmem', []], ['uptime', 1.5], ['maxcpu', 2147483648], ['template', 2], ['name', []]]);
 
@@ -107,3 +107,42 @@ test('proxmox safely normalizes unfamiliar statuses and supports templates', fun
         ->and($data['guests']['qemu:100']['status'])->toBe('unknown')
         ->and($data['guests']['lxc:101']['template'])->toBeTrue();
 });
+
+test('proxmox inventory supports current and future resource shapes', function (string $shape) {
+    pveCompatibilityFake($shape);
+    $data = app(ProxmoxApiClient::class)->inventory(pveConnection());
+    expect(array_keys($data['nodes']))->toBe(['proxmox'])
+        ->and(array_keys($data['guests']))->toBe(['qemu:100', 'lxc:101']);
+    Http::assertSentCount(2);
+})->with(['9.1.1', '9.1.4', 'future']);
+
+test('proxmox rejects resource rows without a nonempty string type', function (mixed $row) {
+    pveFake([...pveResources(), $row]);
+    expect(fn () => app(ProxmoxApiClient::class)->inventory(pveConnection()))->toThrow(ProxmoxApiException::class);
+})->with(['scalar' => [42], 'missing' => [[]], 'null' => [['type' => null]],
+    'empty' => [['type' => '']], 'number' => [['type' => 42]], 'array' => [['type' => []]]]);
+
+test('proxmox ignores unknown resource fields before imported field validation', function () {
+    pveFake([...pveResources(), ['type' => 'future', 'node' => [], 'status' => [], 'vmid' => -1, 'cpu' => -10]]);
+    $data = app(ProxmoxApiClient::class)->inventory(pveConnection());
+    expect($data['nodes'])->toHaveCount(2)->and($data['guests'])->toHaveCount(2);
+});
+
+test('proxmox keeps strict validation for every imported resource type', function (string $type, string $field, mixed $value) {
+    $rows = pveResources();
+    $index = array_search($type, array_column($rows, 'type'), true);
+    $rows[$index][$field] = $value;
+    pveFake($rows);
+    expect(fn () => app(ProxmoxApiClient::class)->inventory(pveConnection()))->toThrow(ProxmoxApiException::class);
+})->with(['node', 'qemu', 'lxc'])->with([
+    ['node', null], ['node', 'bad/name'], ['node', 'absent'],
+    ['status', []], ['status', ''], ['cpu', 'bad'], ['cpu', -0.1], ['cpu', 1.1], ['mem', -1],
+]);
+
+test('proxmox keeps strict guest identity name and template validation', function (string $type, string $field, mixed $value) {
+    $rows = pveResources();
+    $index = array_search($type, array_column($rows, 'type'), true);
+    $rows[$index][$field] = $value;
+    pveFake($rows);
+    expect(fn () => app(ProxmoxApiClient::class)->inventory(pveConnection()))->toThrow(ProxmoxApiException::class);
+})->with(['qemu', 'lxc'])->with([['vmid', null], ['vmid', -1], ['name', []], ['template', 2]]);

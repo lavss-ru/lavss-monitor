@@ -43,3 +43,33 @@ function pvePayload(ProxmoxConnection $connection, array $changes = []): array
     return array_replace($connection->only(['name', 'location_id', 'host', 'port', 'scheme', 'verify_tls', 'api_user', 'api_token_id', 'enabled']),
         ['api_token_secret' => ''], $changes);
 }
+
+// Synthetic node/guest metrics with the reported PVE 9.1.4 network row verbatim.
+function pveCompatibilityResources(string $shape): array
+{
+    $rows = [
+        ['type' => 'node', 'node' => 'proxmox', 'status' => 'online'],
+        ['type' => 'qemu', 'node' => 'proxmox', 'vmid' => 100, 'name' => 'VM test', 'status' => 'running'],
+        ['type' => 'lxc', 'node' => 'proxmox', 'vmid' => 101, 'name' => 'LXC test', 'status' => 'stopped'],
+        ['type' => 'storage', 'storage' => 'local'],
+    ];
+    if ($shape === '9.1.4') {
+        $rows[] = ['id' => 'network/proxmox/zone/localnetwork', 'network' => 'localnetwork',
+            'network-type' => 'zone', 'node' => 'proxmox', 'status' => 'ok', 'type' => 'network'];
+    }
+    if ($shape === 'future') {
+        $rows[] = ['id' => 'foobar/proxmox/example', 'type' => 'foobar', 'node' => 'proxmox', 'status' => 'whatever'];
+    }
+
+    return $rows;
+}
+
+function pveCompatibilityFake(string $shape): void
+{
+    Http::swap(new Factory);
+    Http::preventStrayRequests();
+    Http::fake([
+        '*/nodes' => Http::response(['data' => [['node' => 'proxmox']]]),
+        '*/cluster/resources' => Http::response(['data' => pveCompatibilityResources($shape)]),
+    ]);
+}

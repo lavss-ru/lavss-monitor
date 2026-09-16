@@ -68,14 +68,13 @@ class ProxmoxApiClient
         }
         $result = ['nodes' => [], 'guests' => []];
         foreach ($resources as $row) {
-            if (! is_array($row) || ! is_string($row['type'] ?? null)) {
+            if (! is_array($row) || ! is_string($row['type'] ?? null) || $row['type'] === '') {
                 throw new ProxmoxApiException('payload');
             }
-            if (in_array($row['type'], ['storage', 'pool', 'sdn'], true)) {
+            if (! in_array($row['type'], ['node', 'qemu', 'lxc'], true)) {
                 continue;
             }
-            if (! in_array($row['type'], ['node', 'qemu', 'lxc'], true)
-                || ! $this->nodeName($row['node'] ?? null) || ! isset($expected[$row['node']])
+            if (! $this->nodeName($row['node'] ?? null) || ! isset($expected[$row['node']])
                 || ! is_string($row['status'] ?? null) || $row['status'] === '') {
                 throw new ProxmoxApiException('payload');
             }

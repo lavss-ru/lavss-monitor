@@ -184,3 +184,19 @@ test('proxmox classifies API failures and preserves their safe cause', function 
     ['500', 'offline', 'http', 'Ошибка HTTP API'],
     ['internal', 'unknown', 'internal', 'Внутренняя ошибка'],
 ]);
+
+test('proxmox sync imports only nodes and guests across resource shapes', function (string $shape) {
+    $c = pveConnection();
+    pveCompatibilityFake($shape);
+    expect(app(ProxmoxSyncService::class)->run($c))->toBe(['status' => 'online', 'code' => null, 'skipped' => false]);
+    expect($c->fresh()->status)->toBe('online')->and($c->fresh()->last_error_code)->toBeNull()
+        ->and($c->fresh()->last_synced_at)->not->toBeNull()
+        ->and($c->nodes()->sole()->node_name)->toBe('proxmox')
+        ->and($c->guests()->where('guest_type', 'qemu')->sole()->vmid)->toBe(100)
+        ->and($c->guests()->where('guest_type', 'lxc')->sole()->vmid)->toBe(101);
+    $this->assertDatabaseCount('proxmox_nodes', 1);
+    $this->assertDatabaseCount('proxmox_guests', 2);
+    $this->assertDatabaseCount('events', 0);
+    $this->assertDatabaseCount('monitor_checks', 0);
+    Http::assertSentCount(2);
+})->with(['9.1.1', '9.1.4', 'future']);
