@@ -3,15 +3,20 @@
 namespace App\Services;
 
 use App\Models\Location;
+use App\Models\MonitorCheck;
 use App\Models\ProxmoxConnection;
 use Illuminate\Support\Facades\DB;
 
 class ProxmoxSyncService
 {
-    public function __construct(private ProxmoxApiClient $api) {}
+    public function __construct(private ProxmoxApiClient $api, private ProxmoxMonitoringService $monitoring) {}
 
-    public function run(ProxmoxConnection $connection, bool $sync = true): array
+    public function run(ProxmoxConnection $connection, bool $sync = true, string $origin = 'manual'): array
     {
+        if (! in_array($origin, MonitorCheck::ORIGINS, true)) {
+            throw new \InvalidArgumentException('Invalid check origin.');
+        }
+        $policy = NotificationPolicyService::load();
         $connection = $connection->fresh(['location']);
         if (! $connection) {
             return ['status' => 'unknown', 'code' => 'superseded', 'skipped' => true];
@@ -38,7 +43,7 @@ class ProxmoxSyncService
         $elapsed = (int) round((hrtime(true) - $started) / 1_000_000);
         try {
             // All network work is finished. Revision rejects overlapping fetches and edits.
-            return DB::transaction(function () use ($connection, $revision, $reason, $code, $inventory, $version, $elapsed) {
+            $result = DB::transaction(function () use ($connection, $revision, $reason, $code, $inventory, $version, $elapsed, $sync, $origin, $policy) {
                 $current = ProxmoxConnection::whereKey($connection->id)->lockForUpdate()->first();
                 if (! $current || $current->revision !== $revision) {
                     return ['status' => 'unknown', 'code' => 'superseded', 'skipped' => true];
@@ -75,17 +80,36 @@ class ProxmoxSyncService
                     }
                     $changes['last_synced_at'] = $seen;
                 }
+                // A successful version-only test must not make an old inventory factual again.
+                if ($error !== null || ($inventory === null && $current->status !== 'online')) {
+                    $changes['last_synced_at'] = null;
+                }
                 $current->update($changes);
+                $this->monitoring->evaluate($current, $sync, ! $blocked && ! $reason, $origin, $policy);
 
                 return ['status' => $status, 'code' => $error, 'skipped' => $blocked !== null || $reason !== null];
             });
+            if (! $result['skipped']) {
+                $this->monitoring->notify($connection->id, $revision + 1, $sync, $policy);
+            }
+
+            return $result;
         } catch (\Throwable) {
             // Raw DB/transport exceptions must not enter logs or response context.
             try {
-                ProxmoxConnection::whereKey($connection->id)->where('revision', $revision)->update([
-                    'status' => 'unknown', 'last_error_code' => 'internal', 'last_response_ms' => null,
-                    'revision' => $revision + 1,
-                ]);
+                DB::transaction(function () use ($connection, $revision) {
+                    $current = ProxmoxConnection::whereKey($connection->id)->lockForUpdate()->first();
+                    if (! $current || $current->revision !== $revision) {
+                        return;
+                    }
+                    ProxmoxConnection::whereKey($current->id)->update([
+                        'status' => 'unknown', 'last_error_code' => 'internal', 'last_response_ms' => null,
+                        'last_synced_at' => null, 'revision' => $revision + 1,
+                        'failure_started_at' => $current->incident_confirmed_at ? $current->failure_started_at : null,
+                    ]);
+                    $current->nodes()->whereNull('incident_confirmed_at')->update(['failure_started_at' => null]);
+                    $current->guests()->whereNull('incident_confirmed_at')->update(['failure_started_at' => null]);
+                });
             } catch (\Throwable) {
                 // Database unavailable: no trustworthy write is possible.
             }

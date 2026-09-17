@@ -17,7 +17,7 @@ class MonitorProxmoxCommand extends Command
         $checked = $errors = $skipped = 0;
         foreach (ProxmoxConnection::where('enabled', true)->orderBy('id')->lazyById() as $connection) {
             try {
-                $result = $service->run($connection);
+                $result = $service->run($connection, origin: 'scheduled');
                 $result['skipped'] ? $skipped++ : $checked++;
                 if (! $result['skipped'] && $result['code'] !== null) {
                     $errors++;

@@ -11,7 +11,8 @@ class ProxmoxGuest extends Model
 
     protected function casts(): array
     {
-        return ['stale' => 'boolean', 'template' => 'boolean', 'vmid' => 'integer', 'cpu_usage' => 'float',
+        return ['monitoring_enabled' => 'boolean', 'failure_started_at' => 'datetime',
+            'incident_confirmed_at' => 'datetime', 'incident_notified_at' => 'datetime', 'recovery_pending_at' => 'datetime', 'stale' => 'boolean', 'template' => 'boolean', 'vmid' => 'integer', 'cpu_usage' => 'float',
             'memory_used' => 'integer', 'memory_total' => 'integer', 'disk_used' => 'integer',
             'disk_total' => 'integer', 'uptime_seconds' => 'integer', 'max_cpu' => 'integer', 'last_seen_at' => 'datetime'];
     }

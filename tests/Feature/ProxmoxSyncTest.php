@@ -1,7 +1,10 @@
 <?php
 
 use App\Models\ProxmoxGuest;
+use App\Services\ProxmoxApiException;
 use App\Services\ProxmoxSyncService;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Support\Facades\Http;
 
 require_once __DIR__.'/../Support/Proxmox.php';
@@ -24,7 +27,7 @@ test('proxmox sync creates and updates inventory including moves templates and m
         ->and($c->guests()->count())->toBe(2)->and($c->guests()->where('guest_type', 'lxc')->sole()->status)->toBe('running')
         ->and($c->fresh()->last_synced_at)->not->toBeNull();
     $this->assertDatabaseCount('events', 0);
-    $this->assertDatabaseCount('monitor_checks', 0);
+    $this->assertDatabaseCount('monitor_checks', 6);
 });
 
 test('proxmox missing guest becomes stale and reappearance reuses row', function () {
@@ -62,7 +65,7 @@ test('proxmox failed and malformed sync preserves all previous inventory', funct
     $c = pveConnection();
     pveFake();
     app(ProxmoxSyncService::class)->run($c);
-    $before = [$c->nodes()->get()->toArray(), $c->guests()->get()->toArray()];
+    $before = [$c->nodes()->get()->map(fn ($row) => $row->makeHidden(['failure_started_at', 'updated_at']))->toArray(), $c->guests()->get()->toArray()];
     if ($failure === 'malformed') {
         pveFake([]);
     } else {
@@ -70,14 +73,14 @@ test('proxmox failed and malformed sync preserves all previous inventory', funct
     }
     $this->travel(2)->minutes();
     $result = app(ProxmoxSyncService::class)->run($c);
-    expect($result['status'])->toBe('unknown')->and([$c->nodes()->get()->toArray(), $c->guests()->get()->toArray()])->toBe($before);
+    expect($result['status'])->toBe('unknown')->and([$c->nodes()->get()->map(fn ($row) => $row->makeHidden(['failure_started_at', 'updated_at']))->toArray(), $c->guests()->get()->toArray()])->toBe($before);
 })->with(['malformed', 'auth']);
 
 test('proxmox respects location dependency without HTTP timestamps or stale changes', function (string $state) {
     $c = pveConnection();
     pveFake();
     app(ProxmoxSyncService::class)->run($c);
-    $before = [$c->nodes()->get()->toArray(), $c->guests()->get()->toArray()];
+    $before = [$c->nodes()->get()->map(fn ($row) => $row->makeHidden(['failure_started_at', 'updated_at']))->toArray(), $c->guests()->get()->toArray()];
     $checked = $c->fresh()->last_checked_at->toISOString();
     $c->location->update(['monitoring_enabled' => true, 'probe_host' => '192.0.2.1', 'probe_port' => 22,
         'status' => $state === 'disabled' ? 'online' : $state, 'enabled' => $state !== 'disabled',
@@ -87,7 +90,7 @@ test('proxmox respects location dependency without HTTP timestamps or stale chan
     $result = app(ProxmoxSyncService::class)->run($c);
     expect($result)->toBe(['status' => 'unknown', 'code' => 'location_unavailable', 'skipped' => true])
         ->and($c->fresh()->last_checked_at->toISOString())->toBe($checked)
-        ->and([$c->nodes()->get()->toArray(), $c->guests()->get()->toArray()])->toBe($before);
+        ->and([$c->nodes()->get()->map(fn ($row) => $row->makeHidden(['failure_started_at', 'updated_at']))->toArray(), $c->guests()->get()->toArray()])->toBe($before);
     Http::assertNothingSent();
 })->with(['offline', 'unknown', 'disabled']);
 
@@ -142,14 +145,14 @@ test('proxmox database error rolls back entire inventory', function () {
     $c = pveConnection();
     pveFake();
     app(ProxmoxSyncService::class)->run($c);
-    $before = [$c->nodes()->get()->toArray(), $c->guests()->get()->toArray()];
+    $before = [$c->nodes()->get()->map(fn ($row) => $row->makeHidden(['failure_started_at', 'updated_at']))->toArray(), $c->guests()->get()->toArray()];
     $rows = pveResources();
     $rows[2]['name'] = 'Changed';
     pveFake($rows);
     ProxmoxGuest::updating(fn () => throw new RuntimeException('synthetic-test-secret'));
     try {
         expect(app(ProxmoxSyncService::class)->run($c)['code'])->toBe('internal');
-        expect([$c->nodes()->get()->toArray(), $c->guests()->get()->toArray()])->toBe($before);
+        expect([$c->nodes()->get()->map(fn ($row) => $row->makeHidden(['failure_started_at', 'updated_at']))->toArray(), $c->guests()->get()->toArray()])->toBe($before);
     } finally {
         ProxmoxGuest::flushEventListeners();
     }
@@ -159,23 +162,24 @@ test('proxmox classifies API failures and preserves their safe cause', function 
     $c = pveConnection();
     pveFake();
     app(ProxmoxSyncService::class)->run($c);
-    $before = [$c->nodes()->get()->toArray(), $c->guests()->get()->toArray()];
-    Http::swap(new \Illuminate\Http\Client\Factory);
+    $before = [$c->nodes()->get()->map(fn ($row) => $row->makeHidden(['failure_started_at', 'updated_at']))->toArray(), $c->guests()->get()->toArray()];
+    Http::swap(new Factory);
     Http::preventStrayRequests();
     Http::fake(function () use ($failure) {
         if ($failure === 'network') {
-            throw new \Illuminate\Http\Client\ConnectionException('synthetic-test-secret');
+            throw new ConnectionException('synthetic-test-secret');
         }
         if ($failure === 'internal') {
             throw new RuntimeException('synthetic-test-secret');
         }
+
         return $failure === 'payload' ? Http::response('{') : Http::response('synthetic-test-secret', (int) $failure);
     });
     $result = app(ProxmoxSyncService::class)->run($c);
     expect($result['status'])->toBe($status)->and($result['code'])->toBe($code)
         ->and($c->fresh()->status)->toBe($status)->and($c->fresh()->last_error_code)->toBe($code)
-        ->and(\App\Services\ProxmoxApiException::messageFor($code))->toBe($message)
-        ->and([$c->nodes()->get()->toArray(), $c->guests()->get()->toArray()])->toBe($before);
+        ->and(ProxmoxApiException::messageFor($code))->toBe($message)
+        ->and([$c->nodes()->get()->map(fn ($row) => $row->makeHidden(['failure_started_at', 'updated_at']))->toArray(), $c->guests()->get()->toArray()])->toBe($before);
 })->with([
     ['401', 'unknown', 'auth', 'Ошибка авторизации API'],
     ['403', 'unknown', 'auth', 'Ошибка авторизации API'],
@@ -197,6 +201,6 @@ test('proxmox sync imports only nodes and guests across resource shapes', functi
     $this->assertDatabaseCount('proxmox_nodes', 1);
     $this->assertDatabaseCount('proxmox_guests', 2);
     $this->assertDatabaseCount('events', 0);
-    $this->assertDatabaseCount('monitor_checks', 0);
+    $this->assertDatabaseCount('monitor_checks', 2);
     Http::assertSentCount(2);
 })->with(['9.1.1', '9.1.4', 'future']);

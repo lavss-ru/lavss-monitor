@@ -12,7 +12,8 @@ class ProxmoxNode extends Model
 
     protected function casts(): array
     {
-        return ['stale' => 'boolean', 'cpu_usage' => 'float', 'memory_used' => 'integer',
+        return ['monitoring_enabled' => 'boolean', 'failure_started_at' => 'datetime',
+            'incident_confirmed_at' => 'datetime', 'incident_notified_at' => 'datetime', 'recovery_pending_at' => 'datetime', 'stale' => 'boolean', 'cpu_usage' => 'float', 'memory_used' => 'integer',
             'memory_total' => 'integer', 'uptime_seconds' => 'integer', 'max_cpu' => 'integer', 'last_seen_at' => 'datetime'];
     }
 

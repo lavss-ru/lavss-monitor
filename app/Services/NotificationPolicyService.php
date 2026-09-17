@@ -13,7 +13,7 @@ final class NotificationPolicyService
         'quiet_hours_start' => null, 'quiet_hours_end' => null,
     ];
 
-    public const DELAYS = ['vps' => 0, 'website' => 600, 'local_device' => 120, 'location' => 120];
+    public const DELAYS = ['vps' => 0, 'website' => 600, 'local_device' => 120, 'location' => 120, 'proxmox_connection' => 120, 'proxmox_node' => 120, 'proxmox_guest' => 120];
 
     private function __construct(public readonly array $settings, public readonly array $rules) {}
 

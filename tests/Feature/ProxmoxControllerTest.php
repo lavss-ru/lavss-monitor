@@ -89,7 +89,7 @@ test('proxmox actions show safe success and auth errors without logs or history'
     }
     expect(json_encode(session()->all()))->not->toContain('synthetic-test-secret', 'PVEAPIToken');
     $this->assertDatabaseCount('events', 0);
-    $this->assertDatabaseCount('monitor_checks', 0);
+    $this->assertDatabaseCount('monitor_checks', 5);
 });
 
 test('proxmox location deletion is protected and existing local device survives', function () {

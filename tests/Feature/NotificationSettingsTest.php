@@ -32,7 +32,7 @@ test('settings UI exposes safe values and atomic save updates all rules', functi
     config(['services.max.bot_token' => 'never-expose-token', 'services.max.user_id' => '111']);
     $this->actingAs(User::factory()->create())->get('/settings/notifications')
         ->assertOk()->assertDontSee('never-expose-token')->assertInertia(fn ($page) => $page
-        ->component('Settings/Notifications')->where('effectiveRecipient', '111')->has('rules', 4));
+        ->component('Settings/Notifications')->where('effectiveRecipient', '111')->has('rules', 7));
     $payload = settingsPayload(['max_recipient_id' => '222', 'timezone' => 'Asia/Tokyo',
         'quiet_hours_enabled' => true, 'quiet_hours_start' => '22:00', 'quiet_hours_end' => '07:00',
         'rules' => ['vps' => ['confirmation_seconds' => 86400], 'website' => ['down_enabled' => false],
@@ -41,7 +41,7 @@ test('settings UI exposes safe values and atomic save updates all rules', functi
     expect(Policy::load()->recipient())->toBe('222')->and(Policy::load()->delay('vps'))->toBe(86400)
         ->and(Policy::load()->rules['website']['down_enabled'])->toBeFalse()
         ->and(Policy::load()->recoveryEnabled('local_device'))->toBeFalse()
-        ->and(DB::table('notification_settings')->count())->toBe(1)->and(DB::table('notification_rules')->count())->toBe(4);
+        ->and(DB::table('notification_settings')->count())->toBe(1)->and(DB::table('notification_rules')->count())->toBe(7);
     $this->put('/settings/notifications', settingsPayload(['max_recipient_id' => null]))->assertSessionHasNoErrors();
     expect(Policy::load()->recipient())->toBe('111');
 });

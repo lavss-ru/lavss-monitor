@@ -117,3 +117,67 @@ test('Proxmox page explains safe API error codes alongside unknown or offline st
         assert.doesNotMatch(html, /must-not-be-copied/);
     }
 });
+
+test('Proxmox guest editor exposes explicit expected policy', () => {
+    const tree = page.GuestEditor({ connectionId: 1, guest: { ...guests[0], monitoring_enabled: false, expected_status: 'stopped' }, close() {} });
+    const html = renderToStaticMarkup(tree);
+    assert.match(html, /Ожидаемое состояние/);
+    assert.match(html, /value="running"/);
+    assert.match(html, /value="stopped" selected/);
+    assert.match(html, /value="ignore"/);
+    assert.equal(formData.monitoring_enabled, false);
+    assert.equal(formData.monitor_id, 1);
+    assert.equal(formData.monitoring_target, 'guest');
+});
+
+test('Proxmox ignored guest is not rendered as a problem', () => {
+    const html = render({ guests: [{ ...guests[0], monitoring_enabled: false, monitoring_state: 'ignored' }] });
+    assert.match(html, /Мониторинг выключен/);
+    assert.doesNotMatch(html, />problem/);
+});
+
+test('Proxmox monitored guest renders expected-state health and grace', () => {
+    for (const [state, label] of [['online', 'healthy'], ['offline', 'problem']]) {
+        const html = render({ guests: [{ ...guests[0], proxmox_node_id: 1, monitoring_enabled: true, monitoring_state: state,
+            expected_status: 'stopped', failure_started_at: state === 'offline' ? '2026-09-17' : null }] });
+        assert.match(html, new RegExp(label));
+        assert.match(html, /Expected: stopped/);
+        if (state === 'offline') assert.match(html, /grace/);
+    }
+});
+
+test('Proxmox unavailable parent suppresses guest healthy or problem display', () => {
+    const html = render({ available: false, guests: [{ ...guests[0], monitoring_enabled: true, monitoring_state: 'offline', incident_confirmed_at: '2026-09-17' }] });
+    assert.match(html, /unknown/);
+    assert.match(html, /confirmed/);
+    assert.doesNotMatch(html, />problem|>healthy|>running</);
+});
+
+test('Proxmox offline node suppresses only its guests', () => {
+    const html = render({ guests: [
+        { ...guests[0], monitoring_enabled: true, monitoring_state: 'offline' },
+        { ...guests[1], stale: false, monitoring_enabled: true, monitoring_state: 'online' },
+    ] });
+    assert.match(html, /healthy/);
+    assert.match(html, /unknown/);
+    assert.doesNotMatch(html, />problem/);
+});
+
+test('Proxmox dashboard summary labels guest expected-state availability', () => {
+    const dashboard = compile('resources/js/Pages/Dashboard.tsx', {
+        '@inertiajs/react': { Head: () => null, usePage: () => ({ props: { auth: { user: { name: 'Test' } } } }) },
+        '@/Components/Dashboard/Sidebar': { Sidebar: () => null },
+        '@/Components/Dashboard/Header': { Header: () => null },
+        '@/Components/Dashboard/SummaryCards': { SummaryCards: () => null },
+        '@/Components/Dashboard/AttentionSection': { AttentionSection: () => null, RecentEventsSection: () => null },
+        '@/Components/Dashboard/VpsSection': { VpsSection: () => null },
+        '@/Components/Dashboard/WebsitesSection': { WebsitesSection: () => null },
+        '@/Components/Dashboard/InfrastructureSection': { InfrastructureSection: () => null, QuickActionsModal: () => null },
+    });
+    const html = renderToStaticMarkup(React.createElement(dashboard.default, { dashboard: {
+        localDevices: {}, proxmox: { monitoring: { connections: { online: 1, offline: 0, unknown: 0 },
+            nodes: { online: 1, offline: 1, unknown: 0 }, guests: { online: 2, offline: 0, unknown: 1 } } },
+    } }));
+    assert.match(html, /PVE connections: 1 online/);
+    assert.match(html, /Guests monitored: 2 healthy · 0 problem · 1 unknown/);
+});

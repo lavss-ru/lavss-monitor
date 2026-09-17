@@ -8,6 +8,7 @@ use App\Models\LocalDevice;
 use App\Models\Location;
 use App\Models\Vps;
 use App\Models\Website;
+use App\Services\ProxmoxSummaryService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -37,6 +38,10 @@ class DashboardController extends Controller
             ->whereIn('severity', ['warning', 'critical'])
             ->orderByDesc('occurred_at')
             ->get();
+        $proxmox = app(ProxmoxSummaryService::class)->summary();
+        $activeEvents = $activeEvents->filter(fn ($event) => ! str_starts_with($event->type, 'proxmox_')
+            || in_array($event->type.':'.$event->source_id, $proxmox['active_incidents'], true));
+        unset($proxmox['active_incidents']);
         $recentEventsCollection = Event::orderByDesc('occurred_at')->take(10)->get();
 
         $activeWarningTitles = $activeEvents->pluck('title')->all();
@@ -155,7 +160,6 @@ class DashboardController extends Controller
         $wordpressCount = $websiteCollection->where('type', 'wordpress')->count();
         $infrastructureCount = $infrastructureCollection->count();
 
-        $proxmox = app(\App\Services\ProxmoxSummaryService::class)->summary();
         $pveCount = $proxmox['nodes'];
         $vmCount = $proxmox['vm']['total'];
         $vmRunning = $proxmox['vm']['running'];

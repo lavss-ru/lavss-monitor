@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { Head, router, useForm } from '@inertiajs/react';
 import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react';
 import { Sidebar } from '@/Components/Dashboard/Sidebar';
-import Inventory, { Node, Guest } from './Inventory';
+import Inventory, { Node, Guest, Incident, MonitoringState, Availability } from './Inventory';
 
 interface Location { id: number; name: string; enabled: boolean }
-export interface Connection {
+export interface Connection extends Incident {
     id: number; name: string; location_id: number; location: Location; host: string; port: number;
     scheme: 'http' | 'https'; verify_tls: boolean; api_user: string; api_token_id: string; enabled: boolean;
     status: string; last_checked_at: string | null; last_synced_at: string | null; last_response_ms: number | null;
@@ -22,7 +22,7 @@ export const initialForm = (connection: Connection | undefined, locations: Locat
     name: connection?.name ?? '', location_id: String(connection?.location_id ?? locations[0]?.id ?? ''),
     host: connection?.host ?? '', port: String(connection?.port ?? 8006), scheme: connection?.scheme ?? 'https',
     verify_tls: connection?.verify_tls ?? true, api_user: connection?.api_user ?? '', api_token_id: connection?.api_token_id ?? '',
-    api_token_secret: '', enabled: connection?.enabled ?? true,
+    api_token_secret: '', monitoring_enabled: connection?.monitoring_enabled ?? true, enabled: connection?.enabled ?? true,
 });
 
 export function Editor({ connection, locations, close }: { connection?: Connection; locations: Location[]; close: () => void }) {
@@ -51,6 +51,7 @@ export function Editor({ connection, locations, close }: { connection?: Connecti
                     <label className="block">Token ID<input required autoComplete="off" maxLength={255} className={input} value={form.data.api_token_id} onChange={e => form.setData('api_token_id', e.target.value)} /></label>
                     <label className="block">Token secret<input type="password" autoComplete="new-password" required={!connection} maxLength={4096} className={input} value={form.data.api_token_secret} onChange={e => form.setData('api_token_secret', e.target.value)} />{connection && <span className="text-xs text-slate-400">Пустое поле сохраняет существующий secret.</span>}</label>
                     <label className="flex gap-2"><input type="checkbox" checked={form.data.enabled} onChange={e => form.setData('enabled', e.target.checked)} />Включено</label>
+                    <label className="flex gap-2"><input type="checkbox" checked={form.data.monitoring_enabled} onChange={e => form.setData('monitoring_enabled', e.target.checked)} />Мониторинг Connection</label>
                     {Object.entries(form.errors).map(([key, value]) => <p key={key} role="alert" className="text-sm text-rose-300">{value}</p>)}
                     <div className="flex gap-2"><button className={button} disabled={form.processing}>Сохранить</button><button type="button" className={button} disabled={form.processing} onClick={close}>Отмена</button></div>
                 </form>
@@ -64,6 +65,7 @@ export default function ProxmoxPage({ connections, locations, result }: {
 }) {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [editor, setEditor] = useState<Connection | 'new' | null>(null);
+    const [guestEditor, setGuestEditor] = useState<{ connectionId: number; guest: Guest } | null>(null);
     const [busy, setBusy] = useState<number | null>(null);
     const action = (connection: Connection, kind: 'test' | 'sync' | 'delete') => {
         if (kind === 'delete' && !window.confirm('Удалить подключение и локальный inventory? Данные в Proxmox сохранятся.')) return;
@@ -85,11 +87,32 @@ export default function ProxmoxPage({ connections, locations, result }: {
                     <p className={'mt-1 text-sm ' + (c.verify_tls && c.scheme === 'https' ? 'text-slate-400' : 'text-amber-300')}>{c.scheme === 'http' ? 'HTTP: token передаётся без шифрования' : c.verify_tls ? 'TLS: проверка включена' : 'TLS: проверка выключена — менее безопасно'}{c.version && ' · PVE ' + c.version}</p></div>
                     <div className="flex flex-wrap items-start gap-2"><button className={button} disabled={busy !== null || !!c.unavailable_reason} onClick={() => action(c, 'test')}>Проверить подключение</button><button className={button} disabled={busy !== null || !!c.unavailable_reason} onClick={() => action(c, 'sync')}>Синхронизировать</button><button className={button} disabled={busy !== null} onClick={() => setEditor(c)}>Изменить</button><button className={button} disabled={busy !== null} onClick={() => action(c, 'delete')}>Удалить</button></div>
                 </div>
+                <MonitoringState monitor={c} /><Availability monitor={c} />
                 {c.last_error_code && <p className="mt-3 text-sm text-amber-200">{errors[c.last_error_code] ?? errors.internal}</p>}
                 <p className="my-4 text-xs text-slate-400">Проверка: {c.last_checked_at ? new Date(c.last_checked_at).toLocaleString() : '—'} · Отклик: {c.last_response_ms === null ? '—' : c.last_response_ms + ' ms'} · Snapshot: {c.last_synced_at ? new Date(c.last_synced_at).toLocaleString() : '—'}. Метрики на момент последней синхронизации; stale — отсутствует в последнем успешном ответе.</p>
-                <Inventory nodes={c.nodes} guests={c.guests} available={c.status === 'online'} />
+                <Inventory nodes={c.nodes} guests={c.guests} available={c.status === 'online' && !!c.last_synced_at && c.monitoring_state !== 'unknown'} toggleNode={node => router.put('/proxmox/' + c.id, { monitoring_target: 'node', monitor_id: node.id, monitoring_enabled: !node.monitoring_enabled }, { preserveScroll: true })} edit={guest => setGuestEditor({ connectionId: c.id, guest })} />
             </article>)}</div>
+            {guestEditor && <GuestEditor {...guestEditor} close={() => setGuestEditor(null)} />}
             {editor && <Editor connection={editor === 'new' ? undefined : editor} locations={locations} close={() => setEditor(null)} />}
         </main>
     </div>;
+}
+
+export function GuestEditor({ connectionId, guest, close }: { connectionId: number; guest: Guest; close: () => void }) {
+    const form = useForm({ monitoring_target: 'guest', monitor_id: guest.id, monitoring_enabled: guest.monitoring_enabled ?? false, expected_status: guest.expected_status ?? 'running' });
+    return <Dialog open onClose={() => !form.processing && close()} className="relative z-50">
+        <div className="fixed inset-0 bg-slate-950/80" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4"><DialogPanel className="w-full max-w-md rounded-xl bg-slate-900 p-6 text-slate-100">
+            <DialogTitle>Мониторинг {guest.guest_type === 'qemu' ? 'VM' : 'LXC'} {guest.vmid} · {guest.name}</DialogTitle>
+            <form className="mt-4 space-y-4" onSubmit={e => { e.preventDefault(); form.put('/proxmox/' + connectionId, { preserveScroll: true, onSuccess: close }); }}>
+                <label className="flex gap-2"><input type="checkbox" checked={form.data.monitoring_enabled} onChange={e => form.setData('monitoring_enabled', e.target.checked)} />Мониторинг включён</label>
+                <label className="block">Ожидаемое состояние<select className={input} value={form.data.expected_status} onChange={e => form.setData('expected_status', e.target.value as Guest['expected_status'] & string)}>
+                    <option value="running">running</option><option value="stopped">stopped</option><option value="ignore">ignore — не проверять</option>
+                </select></label>
+                <p className="text-sm text-slate-400">Изменение политики начинает новый период наблюдения. Команды управления VM/LXC не отправляются.</p>
+                {Object.entries(form.errors).map(([key, value]) => <p key={key} role="alert">{value}</p>)}
+                <button className={button} disabled={form.processing}>Сохранить</button> <button type="button" className={button} disabled={form.processing} onClick={close}>Отмена</button>
+            </form>
+        </DialogPanel></div>
+    </Dialog>;
 }

@@ -278,6 +278,9 @@ test('one settings snapshot per infrastructure batch and new rules apply on same
 });
 
 test('location migrations roll back and restore checks while preserving legacy rows and indexes in sqlite', function () {
+    // Roll back dependent type extensions first, as the migrator does.
+    $proxmox = require database_path('migrations/2026_09_16_000000_add_proxmox_monitoring.php');
+    $proxmox->down();
     $migration = require database_path('migrations/2026_09_14_000001_extend_location_monitor_types.php');
     $schema = require database_path('migrations/2026_09_14_000000_add_location_monitoring_state.php');
     locationFakeCheck('online');
@@ -289,6 +292,7 @@ test('location migrations roll back and restore checks while preserving legacy r
         ->and(Schema::hasColumn('locations', 'status'))->toBeFalse();
     $schema->up();
     $migration->up();
+    $proxmox->up();
     locationMonitor(probeLocation());
     expect(MonitorCheck::count())->toBe(2)->and(Schema::hasIndex('monitor_checks', 'monitor_checks_statistics_index'))->toBeTrue()
         ->and(Schema::hasIndex('notification_rules', ['monitor_type'], 'unique'))->toBeTrue();

@@ -14,7 +14,8 @@ class ProxmoxConnection extends Model
 
     protected function casts(): array
     {
-        return ['api_token_secret' => 'encrypted', 'enabled' => 'boolean', 'verify_tls' => 'boolean',
+        return ['monitoring_enabled' => 'boolean', 'failure_started_at' => 'datetime',
+            'incident_confirmed_at' => 'datetime', 'incident_notified_at' => 'datetime', 'recovery_pending_at' => 'datetime', 'api_token_secret' => 'encrypted', 'enabled' => 'boolean', 'verify_tls' => 'boolean',
             'port' => 'integer', 'location_id' => 'integer', 'revision' => 'integer',
             'last_checked_at' => 'datetime', 'last_synced_at' => 'datetime', 'last_response_ms' => 'integer'];
     }

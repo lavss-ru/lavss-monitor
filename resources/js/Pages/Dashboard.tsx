@@ -62,6 +62,12 @@ export default function Dashboard({ dashboard }: DashboardProps) {
                     {/* Require Attention Block */}
                     <AttentionSection items={dashboard.attentionItems} />
 
+                    <section className="my-5 rounded-xl border border-slate-800 p-4 text-slate-300" aria-label="Proxmox monitoring">
+                        <h2 className="font-semibold">Proxmox monitoring</h2>
+                        {dashboard.proxmox.monitoring && Object.entries(dashboard.proxmox.monitoring).map(([kind, counts]) => <p key={kind}>
+                            {kind === 'connections' ? 'PVE connections' : kind === 'nodes' ? 'Nodes' : 'Guests monitored'}: {counts.online} {kind === 'guests' ? 'healthy' : 'online'} · {counts.offline} {kind === 'guests' ? 'problem' : 'offline'} · {counts.unknown} unknown
+                        </p>)}
+                    </section>
                     {/* Recent Events & Quick Actions grid */}
                     <RecentEventsSection events={dashboard.recentEvents} />
 

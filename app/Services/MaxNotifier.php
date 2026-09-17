@@ -118,6 +118,12 @@ class MaxNotifier
             && $this->send($text, $location->name, $recovery ? 'recovery' : 'down', 'location', $policy);
     }
 
+    public function sendProxmox(string $text, string $type, bool $recovery, NotificationPolicyService $policy): bool
+    {
+        return $policy->maxConfigured() && $policy->decision($type, $recovery) === 'deliver'
+            && $this->send($text, 'Proxmox', $recovery ? 'recovery' : 'down', $type, $policy);
+    }
+
     /**
      * Perform the actual HTTP POST to MAX API.
      * All exceptions are caught so they never propagate to the caller.
@@ -143,7 +149,7 @@ class MaxNotifier
                     $sourceType => $sourceName,
                     'kind' => $kind,
                     'status' => $response->status(),
-                    'body' => $response->body(),
+                    'body' => str_starts_with($sourceType, 'proxmox_') ? '[redacted]' : $response->body(),
                 ]);
 
                 return false;
@@ -154,7 +160,7 @@ class MaxNotifier
             Log::error('MaxNotifier: failed to send MAX notification', [
                 $sourceType => $sourceName,
                 'kind' => $kind,
-                'error' => $e->getMessage(),
+                'error' => str_starts_with($sourceType, 'proxmox_') ? 'delivery_failed' : $e->getMessage(),
             ]);
 
             return false;
